@@ -1,0 +1,5 @@
+{
+  "name": "MindBattle",
+  "description": "An interactive, web-based quiz competition platform inspired by KBC. Participants compete in real-time with timed questions, using lifelines and aiming for the top prize in a thrilling, AI-powered trivia challenge.",
+  "requestFramePermissions": []
+}
