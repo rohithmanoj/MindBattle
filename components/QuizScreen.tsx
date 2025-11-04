@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { QuizQuestion, LifelineStatus } from '../types';
+import { QuizQuestion, LifelineStatus, GameResults } from '../types';
 import { askTheAI } from '../services/geminiService';
 import { FiftyFiftyIcon, AskAIIcon, TimerIcon } from './icons';
 
 interface QuizScreenProps {
   questions: QuizQuestion[];
-  onEndGame: (score: number) => void;
+  onEndGame: (results: GameResults) => void;
   prizeAmounts: number[];
   timePerQuestion: number;
 }
@@ -65,7 +65,7 @@ const QuizScreen: React.FC<QuizScreenProps> = ({ questions, onEndGame, prizeAmou
       setTimeLeft(timePerQuestion);
       setAiHelp({ visible: false, text: '', loading: false });
     } else {
-      onEndGame(prizeAmounts[0]);
+      onEndGame({ format: 'KBC', score: prizeAmounts[0] });
     }
   }, [currentQuestionIndex, questions.length, onEndGame, timePerQuestion, prizeAmounts]);
 
@@ -77,7 +77,7 @@ const QuizScreen: React.FC<QuizScreenProps> = ({ questions, onEndGame, prizeAmou
     if (answerStatus === 'incorrect') {
       const endTimeout = setTimeout(() => {
         const score = currentQuestionIndex > 0 ? prizeAmounts[prizeAmounts.length - currentQuestionIndex] : 0;
-        onEndGame(score);
+        onEndGame({ format: 'KBC', score });
       }, 2000);
       return () => clearTimeout(endTimeout);
     }
@@ -175,7 +175,7 @@ const QuizScreen: React.FC<QuizScreenProps> = ({ questions, onEndGame, prizeAmou
                     : 'text-slate-300';
 
                 return (
-                    <li key={amount} className={`text-sm md:text-base font-semibold rounded-md p-1 md:p-2 transition-all duration-300 text-center lg:text-left ${prizeClass}`}>
+                    <li key={index} className={`text-sm md:text-base font-semibold rounded-md p-1 md:p-2 transition-all duration-300 text-center lg:text-left ${prizeClass}`}>
                         <span className="font-roboto-mono">{prizeAmounts.length - index}</span>
                         <span className="mx-2 hidden lg:inline">-</span>
                         <span className="font-roboto-mono">${amount.toLocaleString()}</span>

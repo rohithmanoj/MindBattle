@@ -1,7 +1,5 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
-import { AppView, QuizQuestion, GameSettings, Contest, User, StoredUser, Transaction, TransactionType } from './types';
-import { generateQuiz } from './services/geminiService';
+import { AppView, QuizQuestion, GameSettings, Contest, User, StoredUser, Transaction, TransactionType, AdminRole, GameResults } from './types';
 import HomeScreen from './components/HomeScreen';
 import QuizScreen from './components/QuizScreen';
 import EndScreen from './components/EndScreen';
@@ -12,6 +10,8 @@ import WalletScreen from './components/WalletScreen';
 import PaymentGatewayScreen from './components/PaymentGatewayScreen';
 import AdminLoginScreen from './components/AdminLoginScreen';
 import WaitingRoomScreen from './components/WaitingRoomScreen';
+import FastestFingerQuizScreen from './components/FastestFingerQuizScreen';
+import CreateContestScreen from './components/CreateContestScreen';
 import { DEFAULT_CATEGORIES, DEFAULT_PRIZE_AMOUNTS, DEFAULT_PAYMENT_GATEWAY_SETTINGS, ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_TIME_PER_QUESTION } from './constants';
 import { MOCK_CONTESTS } from './data';
 
@@ -20,7 +20,7 @@ const App: React.FC = () => {
   const [appView, setAppView] = useState<AppView>('home');
   const [activeContest, setActiveContest] = useState<Contest | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [finalScore, setFinalScore] = useState<number>(0);
+  const [gameResults, setGameResults] = useState<GameResults | null>(null);
   
   const [users, setUsers] = useState<StoredUser[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -38,20 +38,55 @@ const App: React.FC = () => {
 
   useEffect(() => {
     try {
+      // User data migration
       const storedUsers = localStorage.getItem('mindbattle_users');
-      if (storedUsers) {
-        setUsers(JSON.parse(storedUsers));
+      let loadedUsers = storedUsers ? JSON.parse(storedUsers) : [];
+      let userMigrationNeeded = false;
+      const migratedUsers = loadedUsers.map(u => {
+          if (!u.registrationDate) {
+              userMigrationNeeded = true;
+              return { ...u, registrationDate: new Date('2024-01-01').getTime() };
+          }
+          return u;
+      });
+      const adminExists = migratedUsers.some(u => u.email === ADMIN_EMAIL);
+      if (!adminExists) {
+        userMigrationNeeded = true;
+        migratedUsers.push({
+            name: 'Super Admin', email: ADMIN_EMAIL, password: ADMIN_PASSWORD,
+            walletBalance: 0, transactions: [], banned: false, role: 'Super Admin',
+            registrationDate: Date.now(),
+        });
       }
-       const storedSettings = localStorage.getItem('mindbattle_settings');
-      if (storedSettings) {
-        setGameSettings(JSON.parse(storedSettings));
+      if (userMigrationNeeded) {
+        localStorage.setItem('mindbattle_users', JSON.stringify(migratedUsers));
       }
+      setUsers(migratedUsers);
+
+      // Settings
+      const storedSettings = localStorage.getItem('mindbattle_settings');
+      if (storedSettings) setGameSettings(JSON.parse(storedSettings));
+
+      // Contest data migration
       const storedContests = localStorage.getItem('mindbattle_contests');
-      if (storedContests) {
-          setContests(JSON.parse(storedContests));
-      } else {
-          setContests(MOCK_CONTESTS); // Initialize with mock data if nothing is stored
+      let loadedContests = storedContests ? JSON.parse(storedContests) : MOCK_CONTESTS;
+      let contestMigrationNeeded = false;
+      const migratedContests = loadedContests.map(c => {
+          if (!c.format || !c.timerType) {
+              contestMigrationNeeded = true;
+              return { ...c, format: 'KBC', timerType: 'per_question' };
+          }
+          if ((c.status as string) === 'Pending') { // Migration from a potential old state
+              contestMigrationNeeded = true;
+              return { ...c, status: 'Pending Approval' };
+          }
+          return c;
+      });
+      if (contestMigrationNeeded) {
+          localStorage.setItem('mindbattle_contests', JSON.stringify(migratedContests));
       }
+      setContests(migratedContests);
+
     } catch (e) {
       console.error("Failed to parse data from localStorage", e);
     }
@@ -70,11 +105,7 @@ const App: React.FC = () => {
           };
           
           let newBalance = u.walletBalance;
-          if (type === 'admin_adjustment') {
-              newBalance += amount; // for adjustment, amount can be +/-
-          } else {
-              newBalance += newTransaction.amount;
-          }
+          newBalance += newTransaction.amount;
 
           return {
             ...u,
@@ -95,6 +126,34 @@ const App: React.FC = () => {
         }
       }
   }, [users, currentUser]);
+  
+  const handleAdminAdjustWallet = useCallback((userId: string, amount: number, reason: string) => {
+    const adminId = currentUser?.email;
+    if (!isAdmin || !adminId) return;
+
+    const updatedUsers = users.map(u => {
+        if (u.email === userId) {
+            const newBalance = u.walletBalance + amount;
+            const adjustmentTx: Transaction = {
+                id: `txn_adj_${Date.now()}`,
+                type: 'admin_adjustment',
+                amount: amount,
+                description: `Admin adjustment: ${reason}`,
+                timestamp: Date.now(),
+                status: 'completed',
+                updatedBy: adminId,
+            };
+            return {
+                ...u,
+                walletBalance: newBalance,
+                transactions: [adjustmentTx, ...(u.transactions || [])],
+            };
+        }
+        return u;
+    });
+    setUsers(updatedUsers);
+    localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+}, [users, currentUser, isAdmin]);
 
   const handleRegisterForContest = useCallback(async (contest: Contest) => {
     if (!currentUser) {
@@ -125,7 +184,6 @@ const App: React.FC = () => {
         return;
     }
     
-    // Deduct entry fee and add user to participants list
     if (contest.entryFee > 0) {
         addTransaction(currentUser.email, 'entry_fee', contest.entryFee, `Entry for ${contest.title}`);
     }
@@ -135,11 +193,9 @@ const App: React.FC = () => {
     setContests(updatedContests);
     localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
     
-    // After registration, user stays on home screen. The contest card will update to show "Enter Contest".
   }, [currentUser, addTransaction, contests, users]);
   
   const handleEnterContest = useCallback((contest: Contest) => {
-    // Ensure questions are ready before entering
     if (!contest.questions || contest.questions.length === 0) {
         setError('Contest questions are not ready yet. Please check back later.');
         return;
@@ -148,17 +204,18 @@ const App: React.FC = () => {
     setAppView('waiting_room');
   }, []);
 
-  const handleEndGame = useCallback((score: number) => {
-    setFinalScore(score);
-    if (currentUser && score > 0 && !isAdmin) {
-      addTransaction(currentUser.email, 'win', score, 'Prize money from contest');
+  const handleEndGame = useCallback((results: GameResults) => {
+    setGameResults(results);
+    if (results.format === 'KBC' && currentUser && results.score > 0 && !isAdmin) {
+      addTransaction(currentUser.email, 'win', results.score, 'Prize money from contest');
     }
+    // Note: Winnings for FastestFinger format would need a different mechanism, e.g., admin distribution based on final leaderboard.
     setAppView('end');
   }, [currentUser, addTransaction, isAdmin]);
 
   const handleRestart = useCallback(() => {
     setActiveContest(null);
-    setFinalScore(0);
+    setGameResults(null);
     setAppView('home');
   }, []);
 
@@ -176,15 +233,16 @@ const App: React.FC = () => {
     if (user.banned) {
         return { success: false, message: 'Your account has been suspended by an administrator.' };
     }
-    setCurrentUser({ name: user.name, email: user.email, walletBalance: user.walletBalance, transactions: user.transactions || [] });
-    setIsAdmin(false);
+    setCurrentUser(user);
+    setIsAdmin(!!user.role);
     setAppView('home');
     return { success: true, message: 'Login successful' };
   };
 
   const handleAdminLogin = (email: string, password: string): boolean => {
-      if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-          setCurrentUser({ name: 'Admin', email: ADMIN_EMAIL, walletBalance: 0, transactions: [] });
+      const user = users.find(u => u.email === email && u.password === password);
+      if (user && user.role) { 
+          setCurrentUser(user);
           setIsAdmin(true);
           setAppView('home');
           return true;
@@ -197,11 +255,10 @@ const App: React.FC = () => {
       return { success: false, message: 'An account with this email already exists.' };
     }
     const newUser: StoredUser = { 
-        name, 
-        email, 
-        password, 
+        name, email, password, 
         walletBalance: 500, 
         banned: false,
+        registrationDate: Date.now(),
         transactions: [{
             id: `txn_init_${Date.now()}`,
             type: 'deposit',
@@ -231,7 +288,12 @@ const App: React.FC = () => {
     localStorage.setItem('mindbattle_settings', JSON.stringify(newSettings));
   }, []);
 
-  const handleCreateContest = useCallback((newContest: Contest) => {
+  const handleCreateContest = useCallback((newContestData: Omit<Contest, 'id' | 'participants'>) => {
+      const newContest: Contest = {
+          ...newContestData,
+          id: `c_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          participants: [],
+      };
       const updatedContests = [...contests, newContest];
       setContests(updatedContests);
       localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
@@ -255,19 +317,33 @@ const App: React.FC = () => {
       localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
   }, [users]);
   
+  const handleUpdateUserRole = useCallback((userId: string, role: AdminRole | 'None') => {
+      const updatedUsers = users.map(u => {
+          if (u.email === userId) {
+              const updatedUser = { ...u };
+              if (role === 'None') {
+                  delete updatedUser.role;
+              } else {
+                  updatedUser.role = role;
+              }
+              return updatedUser;
+          }
+          return u;
+      });
+      setUsers(updatedUsers);
+      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+  }, [users]);
+  
   const handleCancelContest = useCallback((contestId: string) => {
       const contestToCancel = contests.find(c => c.id === contestId);
       if (!contestToCancel) return;
 
-      // Refund all participants
       contestToCancel.participants.forEach(participantEmail => {
           if (contestToCancel.entryFee > 0) {
               addTransaction(participantEmail, 'refund', contestToCancel.entryFee, `Refund for cancelled contest: ${contestToCancel.title}`);
           }
       });
       
-      // Update contest status
-      // FIX: Explicitly type updatedContests as Contest[] to prevent TypeScript from widening the status property to a generic string.
       const updatedContests: Contest[] = contests.map(c => 
           c.id === contestId ? { ...c, status: 'Cancelled', participants: [] } : c
       );
@@ -306,62 +382,74 @@ const App: React.FC = () => {
   }, [currentUser, addTransaction]);
 
   const handleUpdateWithdrawal = useCallback((userId: string, transactionId: string, action: 'approve' | 'decline') => {
-    const updatedUsers = users.map(u => {
-      if (u.email === userId) {
-        let userToUpdate = { ...u, transactions: [...u.transactions] };
-        const txIndex = userToUpdate.transactions.findIndex(tx => tx.id === transactionId);
-        
-        if (txIndex !== -1) {
-          const originalTx = userToUpdate.transactions[txIndex];
-          if (action === 'approve') {
-            userToUpdate.transactions[txIndex] = { ...originalTx, type: 'withdrawal', status: 'completed', description: 'Withdrawal approved' };
-          } else { // decline
-            userToUpdate.transactions[txIndex] = { ...originalTx, type: 'withdrawal_declined', status: 'declined', description: 'Withdrawal declined' };
-            // Refund the user
-            const refundTx: Transaction = {
-              id: `txn_refund_${Date.now()}`,
-              type: 'deposit',
-              amount: Math.abs(originalTx.amount),
-              description: 'Refund for declined withdrawal',
-              timestamp: Date.now(),
-              status: 'completed',
-            };
-            userToUpdate.transactions.unshift(refundTx);
-            userToUpdate.walletBalance += refundTx.amount;
-          }
-        }
-        return userToUpdate;
-      }
-      return u;
-    });
+    const adminId = currentUser?.email;
+    if (!isAdmin || !adminId) return;
+
+    const userIndex = users.findIndex(u => u.email === userId);
+    if (userIndex === -1) return;
+
+    const userToUpdate = { ...users[userIndex] };
+    userToUpdate.transactions = [...(userToUpdate.transactions || [])];
+    const txIndex = userToUpdate.transactions.findIndex(tx => tx.id === transactionId && tx.status === 'pending');
+    
+    if (txIndex === -1) return;
+
+    const originalTx = userToUpdate.transactions[txIndex];
+
+    if (action === 'approve') {
+        userToUpdate.transactions[txIndex] = { 
+            ...originalTx, type: 'withdrawal', status: 'completed', 
+            description: 'Withdrawal approved by admin', updatedBy: adminId,
+        };
+    } else {
+        userToUpdate.transactions[txIndex] = { 
+            ...originalTx, type: 'withdrawal_declined', status: 'declined', 
+            description: 'Withdrawal declined by admin', updatedBy: adminId,
+        };
+        const refundAmount = Math.abs(originalTx.amount);
+        userToUpdate.walletBalance += refundAmount;
+        const refundTx: Transaction = {
+            id: `txn_refund_${Date.now()}`, type: 'refund', amount: refundAmount,
+            description: `Refund for declined withdrawal`, timestamp: Date.now(), status: 'completed', updatedBy: adminId,
+        };
+        userToUpdate.transactions.unshift(refundTx);
+    }
+    
+    const updatedUsers = [...users];
+    updatedUsers[userIndex] = userToUpdate;
 
     setUsers(updatedUsers);
     localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+  }, [users, currentUser, isAdmin]);
 
-    if (currentUser && currentUser.email === userId) {
-      const updatedUser = updatedUsers.find(u => u.email === userId);
-      if (updatedUser) {
-        setCurrentUser(updatedUser);
+  const handleAdminCreateAdmin = useCallback((name: string, email: string, password: string, role: AdminRole): { success: boolean, message: string } => {
+      if (users.some(u => u.email === email)) {
+        return { success: false, message: 'An account with this email already exists.' };
       }
-    }
-  }, [users, currentUser]);
+      const newAdmin: StoredUser = {
+          name, email, password, role,
+          walletBalance: 0,
+          banned: false,
+          registrationDate: Date.now(),
+          transactions: []
+      };
+      const updatedUsers = [...users, newAdmin];
+      setUsers(updatedUsers);
+      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+      return { success: true, message: 'Admin created successfully!' };
+  }, [users]);
 
 
   const renderContent = () => {
     switch (appView) {
       case 'home':
         return <HomeScreen 
-          contests={contests}
-          currentUser={currentUser}
-          isAdmin={isAdmin}
-          onRegister={handleRegisterForContest}
-          onEnterContest={handleEnterContest}
-          onLoginRequest={() => setAppView('login')}
-          onLogout={handleLogout}
-          onGoToAdmin={handleGoToAdmin}
-          onGoToWallet={handleGoToWallet}
-          error={error}
-          clearError={() => setError(null)}
+          contests={contests} currentUser={currentUser} isAdmin={isAdmin}
+          onRegister={handleRegisterForContest} onEnterContest={handleEnterContest}
+          onLoginRequest={() => setAppView('login')} onLogout={handleLogout}
+          onGoToAdmin={handleGoToAdmin} onGoToWallet={handleGoToWallet}
+          onNavigateToCreateContest={() => setAppView('create_contest')}
+          error={error} clearError={() => setError(null)} categories={gameSettings.categories}
         />;
       case 'login':
         return <LoginScreen onLogin={handleLogin} onCancel={() => setAppView('home')} onNavigateToRegister={() => setAppView('register')} onNavigateToAdminLogin={() => setAppView('admin-login')} />;
@@ -369,55 +457,57 @@ const App: React.FC = () => {
         return <AdminLoginScreen onAdminLogin={handleAdminLogin} onCancel={() => setAppView('home')} onNavigateToUserLogin={() => setAppView('login')} />
       case 'register':
         return <RegisterScreen onRegister={handleRegister} onCancel={() => setAppView('home')} onNavigateToLogin={() => setAppView('login')} />;
+      case 'create_contest':
+        return currentUser ? <CreateContestScreen 
+          currentUser={currentUser} 
+          initialSettings={gameSettings}
+          onCreateContest={(contestData) => {
+            handleCreateContest(contestData);
+            setAppView('home');
+          }}
+          onCancel={() => setAppView('home')}
+        /> : <LoginScreen onLogin={handleLogin} onCancel={() => setAppView('home')} onNavigateToRegister={() => setAppView('register')} onNavigateToAdminLogin={() => setAppView('admin-login')} />;
       case 'waiting_room':
         return <WaitingRoomScreen contest={activeContest!} onContestStart={() => setAppView('playing')} onBack={handleRestart} />;
-      case 'loading':
-        return (
-          <div className="flex flex-col items-center justify-center h-full text-white">
-            <svg className="animate-spin h-10 w-10 text-white mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p className="text-xl">Joining contest...</p>
-            <p className="text-sm text-gray-400">The AI is crafting your questions!</p>
-          </div>
-        );
       case 'playing':
-        return activeContest ? <QuizScreen questions={activeContest.questions} onEndGame={handleEndGame} prizeAmounts={gameSettings.prizeAmounts} timePerQuestion={activeContest.timePerQuestion} /> : <div className="text-white text-center">Error: No active contest found.</div>;
-      case 'end':
-        return <EndScreen score={finalScore} onRestart={handleRestart} totalQuestions={activeContest?.questions.length || 15} prizeAmounts={gameSettings.prizeAmounts} />;
+        if (!activeContest || !currentUser) return <div className="text-white text-center">Error: No active contest or user found.</div>;
+        if (activeContest.format === 'FastestFinger') {
+            return <FastestFingerQuizScreen 
+                contest={activeContest}
+                currentUser={currentUser}
+                onEndGame={handleEndGame}
+            />
+        }
+        return <QuizScreen 
+            questions={activeContest.questions} 
+            onEndGame={handleEndGame} 
+            prizeAmounts={gameSettings.prizeAmounts} 
+            timePerQuestion={activeContest.timePerQuestion} 
+        />;
       case 'admin':
         return isAdmin ? <AdminScreen 
-            initialSettings={gameSettings} 
-            onSaveSettings={handleAdminSaveSettings}
-            onCancel={() => setAppView('home')} 
-            users={users} 
-            onUpdateWithdrawal={handleUpdateWithdrawal}
-            contests={contests}
-            onCreateContest={handleCreateContest}
-            onUpdateContest={handleUpdateContest}
-            onDeleteContest={handleDeleteContest}
-            onAdminUpdateUser={handleAdminUpdateUser}
-            onCancelContest={handleCancelContest}
-            onAdjustWallet={addTransaction}
-         /> : <HomeScreen contests={contests} currentUser={currentUser} isAdmin={isAdmin} onRegister={handleRegisterForContest} onEnterContest={handleEnterContest} onLoginRequest={() => setAppView('login')} onLogout={handleLogout} onGoToAdmin={handleGoToAdmin} onGoToWallet={handleGoToWallet} error={error} clearError={() => setError(null)} />;
+            initialSettings={gameSettings} currentUser={currentUser!}
+            onSaveSettings={handleAdminSaveSettings} onCancel={() => setAppView('home')} 
+            users={users} onUpdateWithdrawal={handleUpdateWithdrawal}
+            contests={contests} onCreateContest={handleCreateContest} onUpdateContest={handleUpdateContest}
+            onDeleteContest={handleDeleteContest} onAdminUpdateUser={handleAdminUpdateUser}
+            onUpdateUserRole={handleUpdateUserRole} onCancelContest={handleCancelContest} onAdjustWallet={handleAdminAdjustWallet}
+            onAdminCreateAdmin={handleAdminCreateAdmin}
+         /> : <HomeScreen contests={contests} currentUser={currentUser} isAdmin={isAdmin} onRegister={handleRegisterForContest} onEnterContest={handleEnterContest} onLoginRequest={() => setAppView('login')} onLogout={handleLogout} onGoToAdmin={handleGoToAdmin} onGoToWallet={handleGoToWallet} onNavigateToCreateContest={() => setAppView('create_contest')} error={error} clearError={() => setError(null)} categories={gameSettings.categories} />;
       case 'wallet':
         return <WalletScreen currentUser={currentUser!} onStartDeposit={handleStartDeposit} onWithdraw={handleWithdraw} onBack={handleRestart} />
       case 'payment':
         return <PaymentGatewayScreen amount={depositInProgress?.amount || 0} onSuccess={handlePaymentSuccess} onCancel={handlePaymentCancel} />;
+      case 'end':
+        return <EndScreen results={gameResults!} onRestart={handleRestart} totalQuestions={gameSettings.prizeAmounts.length} prizeAmounts={gameSettings.prizeAmounts} />;
       default:
         return <HomeScreen 
-          contests={contests}
-          currentUser={currentUser}
-          isAdmin={isAdmin}
-          onRegister={handleRegisterForContest}
-          onEnterContest={handleEnterContest}
-          onLoginRequest={() => setAppView('login')}
-          onLogout={handleLogout}
-          onGoToAdmin={handleGoToAdmin}
-          onGoToWallet={handleGoToWallet}
-          error={error}
-          clearError={() => setError(null)}
+          contests={contests} currentUser={currentUser} isAdmin={isAdmin}
+          onRegister={handleRegisterForContest} onEnterContest={handleEnterContest}
+          onLoginRequest={() => setAppView('login')} onLogout={handleLogout}
+          onGoToAdmin={handleGoToAdmin} onGoToWallet={handleGoToWallet}
+          onNavigateToCreateContest={() => setAppView('create_contest')}
+          error={error} clearError={() => setError(null)} categories={gameSettings.categories}
         />;
     }
   };

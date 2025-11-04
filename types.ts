@@ -1,4 +1,4 @@
-export type AppView = 'home' | 'login' | 'register' | 'loading' | 'playing' | 'end' | 'admin' | 'wallet' | 'payment' | 'admin-login' | 'waiting_room';
+export type AppView = 'home' | 'login' | 'register' | 'loading' | 'playing' | 'end' | 'admin' | 'wallet' | 'payment' | 'admin-login' | 'waiting_room' | 'create_contest';
 
 export interface QuizQuestion {
   question: string;
@@ -31,7 +31,7 @@ export interface Contest {
   category: string;
   entryFee: number;
   prizePool: number;
-  status: 'Upcoming' | 'Live' | 'Finished' | 'Draft' | 'Cancelled';
+  status: 'Upcoming' | 'Live' | 'Finished' | 'Draft' | 'Cancelled' | 'Pending Approval' | 'Rejected';
   registrationStartDate: number;
   registrationEndDate: number;
   contestStartDate: number;
@@ -39,8 +39,17 @@ export interface Contest {
   rules: string;
   questions: QuizQuestion[];
   participants: string[]; // array of user emails
+  format: 'KBC' | 'FastestFinger';
+  timerType: 'per_question' | 'total_contest';
   timePerQuestion: number;
+  totalContestTime?: number; // in seconds, for 'total_contest' type
+  createdBy?: string; // email of the user who created it
 }
+
+export type GameResults =
+  | { format: 'KBC'; score: number }
+  | { format: 'FastestFinger'; leaderboard: { name: string; score: number; time: number }[] };
+
 
 export type TransactionType = 'deposit' | 'withdrawal' | 'win' | 'entry_fee' | 'pending_withdrawal' | 'withdrawal_declined' | 'refund' | 'admin_adjustment';
 
@@ -51,13 +60,19 @@ export interface Transaction {
   description: string;
   timestamp: number;
   status?: 'completed' | 'pending' | 'declined';
+  updatedBy?: string; // email of admin who made the change
 }
+
+export type AdminPermission = 'MANAGE_CONTESTS' | 'MANAGE_FINANCE' | 'MANAGE_USERS' | 'MANAGE_SETTINGS' | 'MANAGE_ADMINS';
+export type AdminRole = 'Super Admin' | 'Contest Manager' | 'Finance Manager' | 'User Manager';
 
 export interface User {
   name: string;
   email: string;
   walletBalance: number;
   transactions: Transaction[];
+  role?: AdminRole;
+  registrationDate: number;
 }
 
 export interface StoredUser extends User {

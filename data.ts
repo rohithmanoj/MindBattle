@@ -16,6 +16,8 @@ export const MOCK_CONTESTS: Contest[] = [
     rules: 'Standard quiz rules. No cheating allowed. The admin\'s decision is final.',
     questions: [], // These would be populated by an admin
     participants: ['test@user.com'],
+    format: 'KBC',
+    timerType: 'per_question',
     timePerQuestion: 30,
   },
   {
@@ -33,6 +35,8 @@ export const MOCK_CONTESTS: Contest[] = [
     rules: 'Science category only. All questions are peer-reviewed for accuracy.',
     questions: [],
     participants: [],
+    format: 'KBC',
+    timerType: 'per_question',
     timePerQuestion: 45,
   },
   {
@@ -50,6 +54,8 @@ export const MOCK_CONTESTS: Contest[] = [
     rules: 'Focuses on world history from ancient civilizations to the 20th century.',
     questions: [],
     participants: [],
+    format: 'KBC',
+    timerType: 'per_question',
     timePerQuestion: 35,
   },
   {
@@ -67,6 +73,8 @@ export const MOCK_CONTESTS: Contest[] = [
     rules: 'Questions cover a wide range of genres and eras.',
     questions: [],
     participants: [],
+    format: 'KBC',
+    timerType: 'per_question',
     timePerQuestion: 25,
   },
     {
@@ -84,6 +92,8 @@ export const MOCK_CONTESTS: Contest[] = [
     rules: 'All sports, all eras. Test your knowledge across the board.',
     questions: [],
     participants: [],
+    format: 'KBC',
+    timerType: 'per_question',
     timePerQuestion: 30,
   },
   {
@@ -101,6 +111,8 @@ export const MOCK_CONTESTS: Contest[] = [
     rules: 'High-level technology questions. For experts only.',
     questions: [],
     participants: [],
+    format: 'KBC',
+    timerType: 'per_question',
     timePerQuestion: 60,
   },
 ];

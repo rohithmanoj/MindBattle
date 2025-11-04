@@ -102,7 +102,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onCancel, o
           <div className="text-center mt-6">
               <p className="text-slate-400">
                   Already have an account?{' '}
-                  <button onClick={onNavigateToLogin} className="font-semibold text-amber-400 hover:text-amber-300 underline">
+                  <button type="button" onClick={onNavigateToLogin} className="font-semibold text-amber-400 hover:text-amber-300 underline">
                       Login here
                   </button>
               </p>
