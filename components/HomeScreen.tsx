@@ -46,7 +46,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ contests, currentUser, isAdmin,
     }
   }, [error, clearError]);
 
-  const { activeContests, finishedContests, myContests } = useMemo(() => {
+  const { activeContests, finishedContests, myContests, featuredContest } = useMemo(() => {
     const now = Date.now();
     const isContestFinished = (c: Contest) => c.status === 'Finished' || now > c.contestStartDate + (2 * 60 * 60 * 1000);
 
@@ -55,14 +55,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ contests, currentUser, isAdmin,
     const finished = approvedContests.filter(c => isContestFinished(c));
     const my = contests.filter(c => c.createdBy === currentUser?.email);
       
-    return { activeContests: active, finishedContests: finished, myContests: my };
-  }, [contests, currentUser]);
-  
-  const featuredContest = useMemo(() => {
-    return activeContests.length > 0
-      ? [...activeContests].sort((a, b) => b.prizePool - a.prizePool)[0]
+    const featured = active.length > 0
+      ? [...active].sort((a, b) => b.prizePool - a.prizePool)[0]
       : null;
-  }, [activeContests]);
+
+    return { activeContests: active, finishedContests: finished, myContests: my, featuredContest: featured };
+  }, [contests, currentUser]);
 
 
   const contestsForTab = activeTab === 'active' 

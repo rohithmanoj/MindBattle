@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { GameSettings, StoredUser, Transaction, Contest, QuizQuestion, AdminRole, AdminPermission, User } from '../types';
 import { generateContestWithAI } from '../services/geminiService';
 import { SearchIcon, DollarSignIcon, UsersIcon, TrendingUpIcon } from './icons';
@@ -203,6 +203,18 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   const [editingUser, setEditingUser] = useState<StoredUser | null>(null);
   const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
   const [newAdminForm, setNewAdminForm] = useState({ name: '', email: '', password: '', role: 'Contest Manager' as AdminRole });
+
+  // State for the user detail view, lifted to comply with Rules of Hooks.
+  const [detailAdjustment, setDetailAdjustment] = useState({ amount: '', reason: '' });
+  const [txSearch, setTxSearch] = useState('');
+
+  // Reset detail view state when switching users to prevent stale data.
+  useEffect(() => {
+    if (selectedUserEmail) {
+      setDetailAdjustment({ amount: '', reason: '' });
+      setTxSearch('');
+    }
+  }, [selectedUserEmail]);
 
   const hasPermission = (permission: AdminPermission): boolean => {
     if (!currentUser.role) return false;
@@ -500,8 +512,6 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   };
   
   const renderUserDetailView = (user: StoredUser) => {
-    const [detailAdjustment, setDetailAdjustment] = useState({ amount: '', reason: '' });
-    const [txSearch, setTxSearch] = useState('');
     const filteredTxs = (user.transactions || []).filter(tx => txSearch === '' || tx.description.toLowerCase().includes(txSearch.toLowerCase()) || tx.type.toLowerCase().includes(txSearch.toLowerCase()));
 
     const handleDetailAdjustWallet = () => {
