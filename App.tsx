@@ -179,35 +179,35 @@ const App: React.FC = () => {
 
 
   const addTransaction = useCallback((userId: string, type: TransactionType, amount: number, description: string, status: 'completed' | 'pending' = 'completed') => {
-      setUsers(currentUsers => {
-        const updatedUsers = currentUsers.map(u => {
-          if (u.email === userId) {
-            const newTransaction: Transaction = {
-              id: `txn_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-              type,
-              amount: ['withdrawal', 'entry_fee', 'pending_withdrawal'].includes(type) ? -Math.abs(amount) : amount,
-              description,
-              timestamp: Date.now(),
-              status,
-            };
-            
-            let newBalance = u.walletBalance;
-            if (type !== 'pending_withdrawal') {
-              newBalance += newTransaction.amount;
+      setUsers(prevUsers => {
+        const updatedUsers = prevUsers.map(user => {
+            if (user.email === userId) {
+                const newTransaction: Transaction = {
+                  id: `txn_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                  type,
+                  amount: ['withdrawal', 'entry_fee', 'pending_withdrawal'].includes(type) ? -Math.abs(amount) : amount,
+                  description,
+                  timestamp: Date.now(),
+                  status,
+                };
+                
+                let newBalance = user.walletBalance;
+                if (type !== 'pending_withdrawal') {
+                  newBalance += newTransaction.amount;
+                }
+                
+                return {
+                  ...user,
+                  walletBalance: newBalance,
+                  transactions: [newTransaction, ...(user.transactions || [])],
+                };
             }
-            
-            const updatedUser: StoredUser = {
-              ...u,
-              walletBalance: newBalance,
-              transactions: [newTransaction, ...(u.transactions || [])],
-            };
-  
-            return updatedUser;
-          }
-          return u;
+            return user;
         });
-  
-        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+
+        if (JSON.stringify(prevUsers) !== JSON.stringify(updatedUsers)) {
+            localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+        }
         return updatedUsers;
       });
   }, []);
@@ -216,10 +216,10 @@ const App: React.FC = () => {
     const adminId = currentUser?.email;
     if (!isAdmin || !adminId) return;
 
-    setUsers(currentUsers => {
-        const updatedUsers = currentUsers.map(u => {
-            if (u.email === userId) {
-                const newBalance = u.walletBalance + amount;
+    setUsers(prevUsers => {
+        const updatedUsers = prevUsers.map(user => {
+            if (user.email === userId) {
+                const newBalance = user.walletBalance + amount;
                 const adjustmentTx: Transaction = {
                     id: `txn_adj_${Date.now()}`,
                     type: 'admin_adjustment',
@@ -229,17 +229,20 @@ const App: React.FC = () => {
                     status: 'completed',
                     updatedBy: adminId,
                 };
-                const adjustedUser = {
-                    ...u,
+                
+                return {
+                    ...user,
                     walletBalance: newBalance,
-                    transactions: [adjustmentTx, ...(u.transactions || [])],
+                    transactions: [adjustmentTx, ...(user.transactions || [])],
                 };
-                return adjustedUser;
             }
-            return u;
+            return user;
         });
-        
-        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+
+        if (JSON.stringify(prevUsers) !== JSON.stringify(updatedUsers)) {
+             localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+        }
+
         return updatedUsers;
     });
 }, [currentUser, isAdmin]);
@@ -535,34 +538,44 @@ const App: React.FC = () => {
     if (!isAdmin || !adminId) return;
 
     setUsers(prevUsers => {
-      const userIndex = prevUsers.findIndex(u => u.email === userId);
-      if (userIndex === -1) return prevUsers;
+      const updatedUsers = prevUsers.map(user => {
+        if (user.email === userId) {
+          const txIndex = (user.transactions || []).findIndex(tx => tx.id === transactionId && tx.status === 'pending');
+          if (txIndex === -1) {
+            return user; // No change for this user
+          }
 
-      const userToUpdate = { ...prevUsers[userIndex] };
-      userToUpdate.transactions = [...(userToUpdate.transactions || [])];
-      const txIndex = userToUpdate.transactions.findIndex(tx => tx.id === transactionId && tx.status === 'pending');
+          const updatedTransactions = [...user.transactions];
+          const originalTx = updatedTransactions[txIndex];
+
+          if (action === 'approve') {
+              updatedTransactions[txIndex] = { 
+                  ...originalTx, type: 'withdrawal', status: 'completed', 
+                  description: 'Withdrawal approved by admin', updatedBy: adminId,
+              };
+              return {
+                ...user,
+                walletBalance: user.walletBalance + originalTx.amount, // originalTx.amount is negative
+                transactions: updatedTransactions,
+              };
+          } else { // Decline
+              updatedTransactions[txIndex] = { 
+                  ...originalTx, type: 'withdrawal_declined', status: 'declined', 
+                  description: 'Withdrawal declined by admin', updatedBy: adminId,
+              };
+              // No balance change on decline
+              return {
+                ...user,
+                transactions: updatedTransactions,
+              };
+          }
+        }
+        return user;
+      });
       
-      if (txIndex === -1) return prevUsers;
-
-      const originalTx = userToUpdate.transactions[txIndex];
-
-      if (action === 'approve') {
-          userToUpdate.transactions[txIndex] = { 
-              ...originalTx, type: 'withdrawal', status: 'completed', 
-              description: 'Withdrawal approved by admin', updatedBy: adminId,
-          };
-          userToUpdate.walletBalance += originalTx.amount;
-      } else { // Decline
-          userToUpdate.transactions[txIndex] = { 
-              ...originalTx, type: 'withdrawal_declined', status: 'declined', 
-              description: 'Withdrawal declined by admin', updatedBy: adminId,
-          };
+      if (JSON.stringify(prevUsers) !== JSON.stringify(updatedUsers)) {
+        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
       }
-      
-      const updatedUsers = [...prevUsers];
-      updatedUsers[userIndex] = userToUpdate;
-      
-      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
       return updatedUsers;
     });
   }, [currentUser, isAdmin]);
