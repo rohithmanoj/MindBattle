@@ -1,15 +1,16 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Contest, User } from '../types';
 
 interface ContestCardProps {
   contest: Contest;
   onRegister: (contest: Contest) => void;
   onEnterContest: (contest: Contest) => void;
+  onViewLeaderboard: (contest: Contest) => void;
   currentUser: User | null;
   isMyContestView?: boolean;
 }
 
-const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterContest, currentUser, isMyContestView = false }) => {
+const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterContest, onViewLeaderboard, currentUser, isMyContestView = false }) => {
   const { title, description, entryFee, prizePool, category, registrationStartDate, registrationEndDate, contestStartDate, maxParticipants, participants, status } = contest;
 
   const now = Date.now();
@@ -17,7 +18,19 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
   const isRegistrationOpen = now >= registrationStartDate && now <= registrationEndDate;
   const isFull = participants.length >= maxParticipants;
   
-  const isFinished = status === 'Finished' || now > contestStartDate + (2 * 60 * 60 * 1000);
+  const isFinished = useMemo(() => {
+    if (status === 'Finished') return true;
+
+    if (contest.format === 'FastestFinger' && contest.timerType === 'total_contest' && contest.totalContestTime) {
+        const endTime = contest.contestStartDate + (contest.totalContestTime * 1000);
+        return now > endTime;
+    }
+
+    // Use a buffer for KBC since game length can vary
+    const endTime = contestStartDate + (2 * 60 * 60 * 1000);
+    return now > endTime;
+  }, [status, contestStartDate, contest.format, contest.timerType, contest.totalContestTime, now]);
+
   const isLive = now >= contestStartDate && !isFinished;
   const isWaiting = now < contestStartDate;
 
@@ -28,8 +41,15 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
     }
 
     if (status === 'Cancelled') return { text: 'Contest Cancelled', disabled: true, action: () => {} };
-    if (isFinished) return { text: 'Contest Finished', disabled: true, action: () => {} };
-    if (isLive) return { text: 'Contest is Live', disabled: true, action: () => {} };
+    if (isFinished) {
+        return { text: 'View Results', disabled: false, action: () => onViewLeaderboard(contest) };
+    }
+    if (isLive) {
+      if(isRegistered) {
+         return { text: 'Enter Contest', disabled: false, action: () => onEnterContest(contest) };
+      }
+      return { text: 'Contest is Live', disabled: true, action: () => {} };
+    }
 
     if (isRegistered) {
         if (isWaiting) {
@@ -126,7 +146,7 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
             className={`w-full font-bold text-lg py-3 px-6 rounded-lg transition-all duration-300 ease-in-out transform hover:scale-105 shadow-lg
             ${isButtonDisabled 
                 ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                : (isRegistered ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/20' : 'bg-amber-500 text-slate-900 hover:bg-amber-400 shadow-amber-500/20')
+                : (buttonText === 'Enter Contest' || buttonText === 'View Results' ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/20' : 'bg-amber-500 text-slate-900 hover:bg-amber-400 shadow-amber-500/20')
             }`}
         >
             {buttonText}

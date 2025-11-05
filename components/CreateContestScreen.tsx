@@ -8,7 +8,7 @@ interface CreateContestScreenProps {
     onCancel: () => void;
 }
 
-// Helper Components from AdminScreen (simplified)
+// Helper Components
 const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string; id: string; }> = ({ label, id, ...props }) => (
     <div>
         <label htmlFor={id} className="block text-slate-300 text-sm font-semibold mb-1">{label}</label>
@@ -29,6 +29,42 @@ const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { label: 
       </select>
   </div>
 );
+const TimeSelector: React.FC<{
+    label: string;
+    id: string;
+    value: number; // in seconds
+    onChange: (seconds: number) => void;
+}> = ({ label, id, value, onChange }) => {
+    const presets = [
+        { label: '1 min', seconds: 60 }, { label: '2 min', seconds: 120 },
+        { label: '5 min', seconds: 300 }, { label: '10 min', seconds: 600 },
+    ];
+    const isCustom = !presets.some(p => p.seconds === value);
+
+    return (
+        <div>
+            <label htmlFor={id} className="block text-slate-300 text-sm font-semibold mb-2">{label}</label>
+            <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex gap-2 flex-wrap">
+                    {presets.map(p => (
+                        <button key={p.seconds} type="button" onClick={() => onChange(p.seconds)}
+                            className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${value === p.seconds ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                            {p.label}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex-grow">
+                    <input id={id} type="number" placeholder="Custom (seconds)"
+                        value={isCustom || value === 0 ? value : ''}
+                        onChange={e => onChange(Number(e.target.value))}
+                        onFocus={() => { if (!isCustom) onChange(0); }}
+                        className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const CreateContestScreen: React.FC<CreateContestScreenProps> = ({ currentUser, initialSettings, onCreateContest, onCancel }) => {
     const regEndDate = Date.now() + 7 * 24 * 60 * 60 * 1000;
@@ -40,6 +76,7 @@ const CreateContestScreen: React.FC<CreateContestScreenProps> = ({ currentUser, 
         contestStartDate: regEndDate + (60 * 60 * 1000),
         maxParticipants: 100, rules: 'Standard quiz rules apply.',
         format: 'KBC', timerType: 'per_question', timePerQuestion: initialSettings.timePerQuestion,
+        totalContestTime: 60, numberOfQuestions: 15,
     });
     const [questionsJson, setQuestionsJson] = useState('');
     const [error, setError] = useState<string | null>(null);
@@ -77,6 +114,7 @@ const CreateContestScreen: React.FC<CreateContestScreenProps> = ({ currentUser, 
                 timerType: contest.timerType || 'per_question',
                 timePerQuestion: contest.timePerQuestion || 30,
                 totalContestTime: contest.totalContestTime,
+                numberOfQuestions: contest.numberOfQuestions || 15,
                 createdBy: currentUser.email,
             };
 
@@ -121,7 +159,6 @@ const CreateContestScreen: React.FC<CreateContestScreenProps> = ({ currentUser, 
             <h1 className="text-3xl font-bold text-amber-400 mb-4 flex-shrink-0">Create Your Contest</h1>
             <p className="text-slate-400 mb-6 flex-shrink-0">Fill out the details below. Your contest will be submitted for admin approval before it goes live.</p>
             
-            {/* FIX: Corrected the broken error display block which was causing a syntax error. */}
             {error && (
                 <div className="bg-red-500/20 border border-red-500 text-red-300 px-4 py-3 rounded-lg relative mb-4 flex-shrink-0" role="alert">
                     <p><strong className="font-bold">Error: </strong>{error}</p>
@@ -132,28 +169,49 @@ const CreateContestScreen: React.FC<CreateContestScreenProps> = ({ currentUser, 
             <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                 <Input label="Contest Title" id="title" type="text" value={contest.title || ''} onChange={e => setContest({...contest, title: e.target.value})} />
                 <Textarea label="Description" id="description" value={contest.description || ''} onChange={e => setContest({...contest, description: e.target.value})} rows={2} />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Select label="Category" id="category" value={contest.category} onChange={e => setContest({...contest, category: e.target.value})}>
                         {initialSettings.categories.map(c => <option key={c} value={c}>{c}</option>)}
                     </Select>
-                    <Select label="Format" id="format" value={contest.format} onChange={e => setContest({...contest, format: e.target.value as 'KBC' | 'FastestFinger'})}>
+                    <Select label="Format" id="format" value={contest.format} onChange={e => {
+                        const newFormat = e.target.value as 'KBC' | 'FastestFinger';
+                        const updates: Partial<Contest> = { format: newFormat };
+                        if (newFormat === 'KBC') {
+                            updates.numberOfQuestions = 15;
+                        }
+                        setContest({ ...contest, ...updates });
+                    }}>
                         <option value="KBC">KBC (Prize Ladder)</option>
                         <option value="FastestFinger">Fastest Finger (Score & Time)</option>
                     </Select>
+                    <Input
+                        label="Number of Questions"
+                        id="numberOfQuestions"
+                        type="number"
+                        min="1"
+                        value={contest.numberOfQuestions ?? 15}
+                        onChange={e => setContest({ ...contest, numberOfQuestions: Number(e.target.value) })}
+                        disabled={contest.format === 'KBC'}
+                    />
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <Input label="Entry Fee ($)" id="entryFee" type="number" value={contest.entryFee ?? 0} onChange={e => setContest({...contest, entryFee: Number(e.target.value)})} />
                     <Input label="Prize Pool ($)" id="prizePool" type="number" value={contest.prizePool ?? 0} onChange={e => setContest({...contest, prizePool: Number(e.target.value)})} />
                     <Input label="Max Participants" id="maxParticipants" type="number" value={contest.maxParticipants ?? 0} onChange={e => setContest({...contest, maxParticipants: Number(e.target.value)})} />
-                    <Select label="Timer Type" id="timerType" value={contest.timerType} onChange={e => setContest({...contest, timerType: e.target.value as 'per_question' | 'total_contest'})}>
-                        <option value="per_question">Per Question</option>
-                        <option value="total_contest">Total Contest Time</option>
-                    </Select>
                 </div>
+                 <Select label="Timer Type" id="timerType" value={contest.timerType} onChange={e => setContest({...contest, timerType: e.target.value as 'per_question' | 'total_contest'})}>
+                    <option value="per_question">Per Question</option>
+                    <option value="total_contest">Total Contest Time</option>
+                </Select>
                  {contest.timerType === 'per_question' ? (
                     <Input label="Time Per Question (s)" id="timePerQuestion" type="number" value={contest.timePerQuestion ?? 0} onChange={e => setContest({...contest, timePerQuestion: Number(e.target.value)})} />
                 ) : (
-                    <Input label="Total Contest Time (s)" id="totalContestTime" type="number" value={contest.totalContestTime ?? 0} onChange={e => setContest({...contest, totalContestTime: Number(e.target.value)})} />
+                    <TimeSelector
+                        label="Total Contest Time"
+                        id="totalContestTime"
+                        value={contest.totalContestTime ?? 0}
+                        onChange={seconds => setContest({ ...contest, totalContestTime: seconds })}
+                    />
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>

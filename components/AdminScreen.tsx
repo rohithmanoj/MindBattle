@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { GameSettings, StoredUser, Transaction, Contest, QuizQuestion, AdminRole, AdminPermission, User } from '../types';
+import { GameSettings, StoredUser, Transaction, Contest, QuizQuestion, AdminRole, AdminPermission, User, Toast } from '../types';
 import { generateContestWithAI } from '../services/geminiService';
-import { SearchIcon, DollarSignIcon, UsersIcon, TrendingUpIcon } from './icons';
+import { SearchIcon, DollarSignIcon, UsersIcon, TrendingUpIcon, DashboardIcon, ContestsIcon, AdminUsersIcon, FinanceIcon, AdminManagementIcon, GlobalSettingsIcon, CheckCircleIcon, XCircleIcon, InfoIcon } from './icons';
 
 // --- Helper Components ---
 
@@ -41,17 +41,55 @@ const Select: React.FC<SelectProps> = ({ label, id, children, ...props }) => (
   </div>
 );
 
-type MainTabs = 'contests' | 'users' | 'finance' | 'admins' | 'settings';
+const TimeSelector: React.FC<{
+    label: string;
+    id: string;
+    value: number; // in seconds
+    onChange: (seconds: number) => void;
+}> = ({ label, id, value, onChange }) => {
+    const presets = [
+        { label: '1 min', seconds: 60 }, { label: '2 min', seconds: 120 },
+        { label: '5 min', seconds: 300 }, { label: '10 min', seconds: 600 },
+    ];
+    const isCustom = !presets.some(p => p.seconds === value);
+
+    return (
+        <div>
+            <label htmlFor={id} className="block text-slate-300 text-sm font-semibold mb-2">{label}</label>
+            <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex gap-2 flex-wrap">
+                    {presets.map(p => (
+                        <button key={p.seconds} type="button" onClick={() => onChange(p.seconds)}
+                            className={`px-3 py-2 rounded-lg font-semibold text-sm transition-colors ${value === p.seconds ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                            {p.label}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex-grow">
+                    <input id={id} type="number" placeholder="Custom (seconds)"
+                        value={isCustom || value === 0 ? value : ''}
+                        onChange={e => onChange(Number(e.target.value))}
+                        onFocus={() => { if (!isCustom) onChange(0); }}
+                        className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+type MainTabs = 'dashboard' | 'contests' | 'users' | 'finance' | 'admins' | 'settings';
 
 interface TabButtonProps {
     tabName: MainTabs;
     label: string;
     activeTab: MainTabs;
     setActiveTab: (tab: MainTabs) => void;
+    icon: React.ReactNode;
 }
-const TabButton: React.FC<TabButtonProps> = ({ tabName, label, activeTab, setActiveTab }) => (
-  <button onClick={() => setActiveTab(tabName)} className={`px-4 py-2 text-lg font-semibold transition-colors ${activeTab === tabName ? 'border-b-2 border-amber-400 text-amber-400' : 'text-slate-400 hover:text-white'}`}>
-    {label}
+const TabButton: React.FC<TabButtonProps> = ({ tabName, label, activeTab, setActiveTab, icon }) => (
+  <button onClick={() => setActiveTab(tabName)} className={`flex items-center px-4 py-2 text-base font-semibold transition-all duration-200 ${activeTab === tabName ? 'border-b-2 border-amber-400 text-amber-400' : 'text-slate-400 hover:text-white border-b-2 border-transparent'}`}>
+    {icon} {label}
   </button>
 );
 
@@ -137,6 +175,142 @@ const EditAdminRoleModal: React.FC<EditAdminRoleModalProps> = ({ user, currentUs
     );
 };
 
+const getStatusChipColor = (status: Contest['status']) => {
+    switch (status) {
+      case 'Upcoming': return 'bg-green-500/20 text-green-300';
+      case 'Live': return 'bg-red-500/20 text-red-300 animate-pulse';
+      case 'Finished': return 'bg-slate-500/20 text-slate-300';
+      case 'Draft': return 'bg-yellow-500/20 text-yellow-300';
+      case 'Cancelled': return 'bg-gray-500/20 text-gray-300';
+      case 'Pending Approval': return 'bg-blue-500/20 text-blue-300';
+      case 'Rejected': return 'bg-red-500/20 text-red-300';
+    }
+};
+
+const StatCard: React.FC<{ icon: React.ReactNode, title: string, value: string | number, colorClass: string }> = ({ icon, title, value, colorClass }) => (
+    <div className="bg-slate-800/60 p-4 rounded-lg flex items-center gap-4">
+        <div className={`p-3 rounded-full bg-slate-700/50 ${colorClass}`}>{icon}</div>
+        <div>
+            <p className="text-sm text-slate-400">{title}</p>
+            <p className={`text-2xl font-bold font-roboto-mono ${colorClass}`}>{value}</p>
+        </div>
+    </div>
+);
+
+const SimpleBarChart: React.FC<{ data: { name: string, value: number }[], maxReg: number }> = ({ data, maxReg }) => (
+    <div className="flex justify-around items-end h-40 pt-4 px-2">
+        {data.map((d, i) => (
+            <div key={i} className="flex flex-col items-center w-1/8 group">
+                <div
+                    className="w-full bg-indigo-500 rounded-t-md group-hover:bg-amber-400 transition-all"
+                    style={{ height: `${(d.value / maxReg) * 100}%` }}
+                >
+                    <div className="opacity-0 group-hover:opacity-100 text-slate-900 text-xs font-bold text-center -mt-5 transition-opacity">{d.value}</div>
+                </div>
+                <span className="text-xs text-slate-400 mt-1">{d.name}</span>
+            </div>
+        ))}
+    </div>
+);
+
+const ContestDetailModal: React.FC<{ contest: Contest; users: StoredUser[]; onClose: () => void; }> = ({ contest, users, onClose }) => {
+    const [tab, setTab] = useState<'participants' | 'results'>('participants');
+    const participantsDetails = useMemo(() => {
+        return contest.participants.map(email => users.find(u => u.email === email)).filter(Boolean) as StoredUser[];
+    }, [contest.participants, users]);
+    
+    const sortedResults = useMemo(() => {
+        if (!contest.results) return [];
+        return [...contest.results].sort((a, b) => b.score - a.score || (a.time || 0) - (b.time || 0));
+    }, [contest.results]);
+
+    const getRankContent = (rank: number) => {
+        if (rank === 0) return '🥇';
+        if (rank === 1) return '🥈';
+        if (rank === 2) return '🥉';
+        return rank + 1;
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 border border-slate-600 rounded-lg p-6 w-full max-w-2xl shadow-2xl relative animate-fade-in flex flex-col max-h-[90vh]">
+                <div className="flex-shrink-0">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h3 className="text-2xl font-bold text-amber-400">{contest.title}</h3>
+                            <p className="text-slate-400 text-sm">{contest.category} - <span className={`font-semibold ${getStatusChipColor(contest.status)} px-2 py-0.5 rounded-full`}>{contest.status}</span></p>
+                        </div>
+                        <button onClick={onClose} className="text-slate-400 hover:text-white text-3xl font-bold">&times;</button>
+                    </div>
+                     <div className="flex border-b border-slate-700 my-4">
+                        <button onClick={() => setTab('participants')} className={`px-4 py-2 font-semibold ${tab === 'participants' ? 'border-b-2 border-amber-400 text-amber-400' : 'text-slate-400 hover:text-white'}`}>Participants ({participantsDetails.length})</button>
+                        <button onClick={() => setTab('results')} disabled={contest.status !== 'Finished'} className={`px-4 py-2 font-semibold disabled:text-slate-600 disabled:cursor-not-allowed ${tab === 'results' ? 'border-b-2 border-amber-400 text-amber-400' : 'text-slate-400 hover:text-white'}`}>Results</button>
+                     </div>
+                </div>
+
+                <div className="flex-grow overflow-y-auto pr-2">
+                    {tab === 'participants' && (
+                        <ul>
+                            {participantsDetails.length > 0 ? participantsDetails.map(p => (
+                                <li key={p.email} className="flex justify-between items-center bg-slate-900/50 p-2 rounded-lg mb-2">
+                                    <p className="font-semibold text-white">{p.name}</p>
+                                    <p className="text-sm text-slate-400">{p.email}</p>
+                                </li>
+                            )) : <p className="text-slate-500 text-center py-8">No participants have registered yet.</p>}
+                        </ul>
+                    )}
+                    {tab === 'results' && (
+                        sortedResults.length > 0 ? (
+                            <table className="w-full text-sm text-left text-slate-300">
+                                 <thead className="text-xs text-slate-400 uppercase bg-slate-800/80 sticky top-0">
+                                    <tr>
+                                        <th className="px-4 py-2 w-16 text-center">Rank</th>
+                                        <th className="px-4 py-2">Player</th>
+                                        <th className="px-4 py-2 text-right">{contest.format === 'KBC' ? 'Prize Won' : 'Score'}</th>
+                                        {contest.format === 'FastestFinger' && <th className="px-4 py-2 text-right">Time</th>}
+                                    </tr>
+                                 </thead>
+                                 <tbody className="divide-y divide-slate-700">
+                                    {sortedResults.map((r, index) => (
+                                        <tr key={r.userId} className={`hover:bg-slate-700/50 ${index < 3 ? 'bg-amber-500/10' : ''}`}>
+                                            <td className="px-4 py-2 font-bold text-center text-xl">{getRankContent(index)}</td>
+                                            <td className="px-4 py-2">{r.name} <span className="text-xs text-slate-500">({r.userId})</span></td>
+                                            <td className="px-4 py-2 font-roboto-mono text-right font-semibold">{contest.format === 'KBC' ? `$${r.score.toLocaleString()}` : r.score}</td>
+                                            {contest.format === 'FastestFinger' && <td className="px-4 py-2 font-roboto-mono text-right">{r.time?.toFixed(2)}s</td>}
+                                        </tr>
+                                    ))}
+                                 </tbody>
+                            </table>
+                        ) : (
+                           <p className="text-slate-500 text-center py-8">No results have been recorded for this contest.</p>
+                        )
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ToastComponent: React.FC<{ toast: Toast, onDismiss: () => void }> = ({ toast, onDismiss }) => {
+    const colors = {
+      success: 'from-green-500/80 to-slate-800 border-green-400 text-green-200',
+      error: 'from-red-500/80 to-slate-800 border-red-400 text-red-200',
+      info: 'from-blue-500/80 to-slate-800 border-blue-400 text-blue-200',
+    };
+    const icons = {
+        success: <CheckCircleIcon />,
+        error: <XCircleIcon />,
+        info: <InfoIcon />,
+    }
+    return (
+        <div className={`flex items-center gap-4 w-full max-w-sm p-4 rounded-lg shadow-lg border-l-4 bg-gradient-to-r ${colors[toast.type]} backdrop-blur-md animate-fade-in-up`}>
+            <div>{icons[toast.type]}</div>
+            <p className="flex-grow font-semibold">{toast.message}</p>
+            <button onClick={onDismiss} className="text-xl">&times;</button>
+        </div>
+    )
+};
+
 
 // --- Main Admin Screen Component ---
 
@@ -170,7 +344,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   } = props;
   
   const [view, setView] = useState<AdminView>('main');
-  const [activeTab, setActiveTab] = useState<MainTabs>('contests');
+  const [activeTab, setActiveTab] = useState<MainTabs>('dashboard');
   
   const [time, setTime] = useState(initialSettings.timePerQuestion.toString());
   const [categories, setCategories] = useState(initialSettings.categories.join('\n'));
@@ -183,13 +357,20 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   const [generatedQuestions, setGeneratedQuestions] = useState<QuizQuestion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [manualQuestionsJson, setManualQuestionsJson] = useState('');
-  const [aiFormParams, setAiFormParams] = useState({ topic: '', ageGroup: 'All Ages', difficulty: 'Medium' });
+  const [aiFormParams, setAiFormParams] = useState({ topic: '', ageGroup: 'All Ages', difficulty: 'Medium', numberOfQuestions: 15 });
   
   const [adjustmentForm, setAdjustmentForm] = useState({ userId: '', amount: '', reason: '' });
   const [transactionSearch, setTransactionSearch] = useState('');
   const [financeTab, setFinanceTab] = useState<'pending' | 'history'>('pending');
 
-  const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const addToast = (message: string, type: Toast['type'] = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
+  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<Contest['status'] | 'all'>('all');
@@ -203,6 +384,8 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   const [editingUser, setEditingUser] = useState<StoredUser | null>(null);
   const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
   const [newAdminForm, setNewAdminForm] = useState({ name: '', email: '', password: '', role: 'Contest Manager' as AdminRole });
+
+  const [viewingContest, setViewingContest] = useState<Contest | null>(null);
 
   // State for the user detail view, lifted to comply with Rules of Hooks.
   const [detailAdjustment, setDetailAdjustment] = useState({ amount: '', reason: '' });
@@ -245,6 +428,21 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
     return { totalUserFunds, totalPrizes, totalEntryFees, totalPendingWithdrawals, pendingWithdrawals, allTransactions };
   }, [users]);
 
+  const registrationData = useMemo(() => {
+    const data: { name: string, value: number }[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for(let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dayStart = date.getTime();
+        const dayEnd = dayStart + (24 * 60 * 60 * 1000) - 1;
+        const count = users.filter(u => u.registrationDate >= dayStart && u.registrationDate <= dayEnd).length;
+        data.push({ name: date.toLocaleDateString(undefined, { weekday: 'short' }), value: count });
+    }
+    return data;
+  }, [users]);
+
 
   const toDateInputString = (timestamp: number | undefined): string => {
     if (!timestamp) return '';
@@ -274,7 +472,6 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
 
 
   const handleSaveSettings = () => {
-    setError(null);
     try {
       const newSettings: GameSettings = {
         timePerQuestion: Number(time),
@@ -286,9 +483,9 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
       if (newSettings.prizeAmounts.length !== 15) throw new Error(`The prize ladder must have exactly 15 levels. You have provided ${newSettings.prizeAmounts.length}.`);
       if (Object.values(newSettings.paymentGatewaySettings).some(v => !v)) throw new Error("All payment gateway fields are required.");
       onSaveSettings(newSettings);
-      alert('Settings saved successfully!');
+      addToast('Settings saved successfully!', 'success');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Invalid format in one of the fields.');
+      addToast(e instanceof Error ? e.message : 'Invalid format in one of the fields.', 'error');
     }
   };
   
@@ -303,6 +500,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
         maxParticipants: 100, rules: 'Standard quiz rules apply.',
         questions: [], participants: [], 
         format: 'KBC', timerType: 'per_question', timePerQuestion: initialSettings.timePerQuestion,
+        totalContestTime: 60, numberOfQuestions: 15,
     });
     setManualQuestionsJson('');
     setGeneratedQuestions([]);
@@ -317,25 +515,23 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
 
   const handleGenerateQuestions = async () => {
       if (!aiFormParams.topic) {
-          setError("Please provide a topic to generate a contest.");
+          addToast("Please provide a topic to generate a contest.", 'error');
           return;
       }
       setIsGenerating(true);
-      setError(null);
       try {
-          const contestData = await generateContestWithAI(aiFormParams.topic, aiFormParams.ageGroup, aiFormParams.difficulty);
+          const contestData = await generateContestWithAI(aiFormParams.topic, aiFormParams.ageGroup, aiFormParams.difficulty, aiFormParams.numberOfQuestions);
           setCurrentContest(prev => ({ ...prev, ...contestData }));
           setGeneratedQuestions(contestData.questions || []);
           setView('verify_questions');
       } catch (e) {
-          setError(e instanceof Error ? e.message : "Failed to generate contest.");
+          addToast(e instanceof Error ? e.message : "Failed to generate contest.", 'error');
       } finally {
           setIsGenerating(false);
       }
   };
 
   const handleSaveContest = () => {
-    setError(null);
     if (!currentContest) return;
     try {
         let questionsToSave: QuizQuestion[] = currentContest.questions || [];
@@ -359,6 +555,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
             timerType: currentContest.timerType || 'per_question',
             timePerQuestion: Number(currentContest.timePerQuestion) || 30,
             totalContestTime: Number(currentContest.totalContestTime) || undefined,
+            numberOfQuestions: Number(currentContest.numberOfQuestions) || 15,
             createdBy: currentContest.createdBy || currentUser.email,
         };
 
@@ -371,11 +568,11 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
         } else {
             onCreateContest(contestData);
         }
-
+        addToast('Contest saved successfully!', 'success');
         setView('main');
         setCurrentContest(null);
     } catch(e) {
-        setError(e instanceof Error ? e.message : 'Failed to save contest.');
+        addToast(e instanceof Error ? e.message : 'Failed to save contest.', 'error');
     }
   };
   
@@ -392,53 +589,79 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
        } else {
           onCreateContest(finalContestData);
        }
-
+       addToast('Contest has been published!', 'success');
        setView('main');
        setCurrentContest(null);
        setGeneratedQuestions([]);
   };
 
   const handleAdjustWalletSubmit = () => {
-    setError(null);
     const { userId, amount: amountStr, reason } = adjustmentForm;
     const amount = parseFloat(amountStr);
 
     if (!userId || isNaN(amount) || !reason.trim()) {
-        setError("Please select a user, enter a valid amount, and provide a reason.");
+        addToast("Please select a user, enter a valid amount, and provide a reason.", 'error');
         return;
     }
     if (!window.confirm(`Adjust ${userId}'s balance by $${amount}? This is irreversible.`)) return;
 
     onAdjustWallet(userId, amount, reason);
+    addToast(`Successfully adjusted ${userId}'s wallet.`, 'success');
     setAdjustmentForm({ userId: '', amount: '', reason: '' });
   };
 
   const handleCreateAdminSubmit = () => {
-      setError(null);
       const { name, email, password, role } = newAdminForm;
       if (!name.trim() || !email.trim() || !password.trim()) {
-          setError("All fields are required to create an admin.");
+          addToast("All fields are required to create an admin.", 'error');
           return;
       }
       const result = onAdminCreateAdmin(name, email, password, role);
       if (result.success) {
+          addToast(result.message, 'success');
           setIsCreatingAdmin(false);
           setNewAdminForm({ name: '', email: '', password: '', role: 'Contest Manager' });
       } else {
-          setError(result.message);
+          addToast(result.message, 'error');
       }
   }
   
-  const getStatusChipColor = (status: Contest['status']) => {
-    switch (status) {
-      case 'Upcoming': return 'bg-green-500/20 text-green-300';
-      case 'Live': return 'bg-red-500/20 text-red-300 animate-pulse';
-      case 'Finished': return 'bg-slate-500/20 text-slate-300';
-      case 'Draft': return 'bg-yellow-500/20 text-yellow-300';
-      case 'Cancelled': return 'bg-gray-500/20 text-gray-300';
-      case 'Pending Approval': return 'bg-blue-500/20 text-blue-300';
-      case 'Rejected': return 'bg-red-500/20 text-red-300';
-    }
+  const renderDashboardView = () => {
+    const activeContests = contests.filter(c => ['Upcoming', 'Live'].includes(c.status));
+    const totalUsers = users.filter(u => !u.role).length;
+    
+    const maxReg = Math.max(...registrationData.map(d => d.value), 1);
+
+    return (
+        <div className="space-y-6">
+            <div className="mb-6 border-b-2 border-slate-700 pb-2">
+                <h2 className="text-2xl font-semibold text-slate-200">Platform Overview</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <StatCard icon={<DollarSignIcon />} title="Total User Funds" value={`$${totalUserFunds.toLocaleString()}`} colorClass="text-white" />
+                <StatCard icon={<UsersIcon />} title="Registered Users" value={totalUsers} colorClass="text-white" />
+                <StatCard icon={<TrendingUpIcon />} title="Active Contests" value={activeContests.length} colorClass="text-green-400" />
+                <StatCard icon={<DollarSignIcon />} title="Pending Withdrawals" value={`$${totalPendingWithdrawals.toLocaleString()}`} colorClass="text-yellow-400" />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-slate-800/40 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-slate-200 mb-2">User Registrations (Last 7 Days)</h3>
+                    <SimpleBarChart data={registrationData} maxReg={maxReg} />
+                </div>
+                 <div className="bg-slate-800/40 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-slate-200 mb-2">Recent User Registrations</h3>
+                    <ul className="space-y-2 max-h-[25vh] overflow-y-auto pr-1">
+                        {[...users].filter(u => !u.role).sort((a,b) => b.registrationDate - a.registrationDate).slice(0, 5).map(u => (
+                            <li key={u.email} className="bg-slate-800/60 p-2 rounded-lg flex items-center justify-between text-sm">
+                                <div><p className="font-bold text-white">{u.name}</p><p className="text-xs text-slate-400">{u.email}</p></div>
+                                <span className="text-xs text-slate-500">{new Date(u.registrationDate).toLocaleDateString()}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    );
   };
   
   const renderContestsView = () => {
@@ -499,6 +722,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
                             <p className="text-xs text-slate-400">{c.category} | {c.participants.length}/{c.maxParticipants} participants {c.createdBy && `| By: ${c.createdBy}`}</p>
                         </div>
                         <div className="flex gap-2">
+                           <button onClick={() => setViewingContest(c)} className="bg-slate-600 hover:bg-slate-500 text-white font-bold py-1 px-3 rounded text-sm">Details</button>
                            <button onClick={() => handleEditContest(c)} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-1 px-3 rounded text-sm">Edit</button>
                            {c.status === 'Upcoming' && <button onClick={() => window.confirm('Cancel this contest? Participants will be refunded.') && onCancelContest(c.id)} className="bg-orange-600 hover:bg-orange-500 text-white font-bold py-1 px-3 rounded text-sm">Cancel</button>}
                            <button onClick={() => window.confirm('Permanently delete this contest?') && onDeleteContest(c.id)} className="bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded text-sm">Delete</button>
@@ -516,9 +740,13 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
 
     const handleDetailAdjustWallet = () => {
         const amount = parseFloat(detailAdjustment.amount);
-        if (isNaN(amount) || !detailAdjustment.reason.trim()) return alert("Please provide a valid amount and reason.");
+        if (isNaN(amount) || !detailAdjustment.reason.trim()) {
+            addToast("Please provide a valid amount and reason.", 'error');
+            return;
+        }
         if (window.confirm(`Adjust ${user.name}'s wallet by $${amount}?`)) {
             onAdjustWallet(user.email, amount, detailAdjustment.reason);
+            addToast("User wallet adjusted successfully!", 'success');
             setDetailAdjustment({ amount: '', reason: '' });
         }
     };
@@ -526,25 +754,46 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4 mb-4 border-b-2 border-slate-700 pb-2">
-                <button onClick={() => setSelectedUserEmail(null)} className="bg-slate-600 font-bold py-2 px-4 rounded-lg">&larr;</button>
+                <button onClick={() => setSelectedUserEmail(null)} className="bg-slate-600 font-bold py-2 px-4 rounded-lg">&larr; Back</button>
                 <div>
                     <h2 className="text-2xl font-semibold text-slate-200">{user.name}</h2>
                     <p className="text-sm text-slate-400">{user.email}</p>
                 </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-slate-800/60 p-4 rounded-lg"><p className="text-sm text-slate-400">Status</p><span className={`px-2 py-1 text-sm font-semibold rounded-full ${user.banned ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'}`}>{user.banned ? 'Banned' : 'Active'}</span></div>
-                <div className="bg-slate-800/60 p-4 rounded-lg"><p className="text-sm text-slate-400">Wallet Balance</p><p className="text-xl font-bold font-roboto-mono text-white">${user.walletBalance.toLocaleString()}</p></div>
-                <div className="bg-slate-800/60 p-4 rounded-lg"><p className="text-sm text-slate-400">Registration Date</p><p className="text-lg font-semibold text-white">{new Date(user.registrationDate).toLocaleDateString()}</p></div>
-            </div>
-            <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1 bg-slate-800/40 p-4 rounded-lg"><h3 className="text-lg font-semibold text-slate-200 mb-2">Actions</h3><button onClick={() => onAdminUpdateUser(user.email, { banned: !user.banned })} className={`w-full font-bold py-2 px-3 rounded text-sm ${user.banned ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-red-600 hover:bg-red-500 text-white'}`}>{user.banned ? 'Unban User' : 'Ban User'}</button></div>
-                 <div className="flex-2 bg-slate-800/40 p-4 rounded-lg"><h3 className="text-lg font-semibold text-slate-200 mb-2">Adjust Wallet</h3><div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end"><Input id="detailAmount" label="Amount" type="number" placeholder="e.g. 50" value={detailAdjustment.amount} onChange={e => setDetailAdjustment({...detailAdjustment, amount: e.target.value})} /><Input id="detailReason" label="Reason" type="text" placeholder="Reason" value={detailAdjustment.reason} onChange={e => setDetailAdjustment({...detailAdjustment, reason: e.target.value})} /><button onClick={handleDetailAdjustWallet} className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold py-2 px-4 rounded-lg">Apply</button></div></div>
-            </div>
-            <div>
-                <h3 className="text-lg font-semibold text-slate-200 mb-2">Transaction History</h3>
-                 <input type="text" placeholder="Search transactions..." value={txSearch} onChange={e => setTxSearch(e.target.value)} className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg py-2 px-3 mb-4 text-white" />
-                 <div className="overflow-x-auto max-h-[25vh]"><table className="w-full text-sm text-left text-slate-300"><thead className="text-xs text-slate-400 uppercase bg-slate-800/80 sticky top-0"><tr><th className="px-4 py-2">Date</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Amount</th><th className="px-4 py-2">Description</th><th className="px-4 py-2">Status</th></tr></thead><tbody className="divide-y divide-slate-700">{filteredTxs.map(tx => (<tr key={tx.id} className="hover:bg-slate-700/50"><td className="px-4 py-2 text-xs">{new Date(tx.timestamp).toLocaleString()}</td><td className="px-4 py-2 uppercase text-xs font-bold">{tx.type.replace(/_/g, ' ')}</td><td className={`px-4 py-2 font-roboto-mono font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>{tx.amount > 0 ? '+' : ''}${tx.amount.toLocaleString()}</td><td className="px-4 py-2">{tx.description}</td><td className="px-4 py-2"><span className={`px-2 py-0.5 text-xs rounded-full ${tx.status === 'completed' ? 'bg-green-500/20 text-green-300' : tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-red-500/20 text-red-300'}`}>{tx.status}</span></td></tr>))}</tbody></table></div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left Column */}
+                <div className="space-y-6">
+                    <div className="bg-slate-800/40 p-4 rounded-lg">
+                        <h3 className="text-lg font-semibold text-slate-200 mb-4">User Info</h3>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div><p className="text-slate-400">Status</p><span className={`px-2 py-1 font-semibold rounded-full ${user.banned ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'}`}>{user.banned ? 'Banned' : 'Active'}</span></div>
+                            <div><p className="text-slate-400">Balance</p><p className="font-bold font-roboto-mono text-white">${user.walletBalance.toLocaleString()}</p></div>
+                            <div className="col-span-2"><p className="text-slate-400">Joined</p><p className="font-semibold text-white">{new Date(user.registrationDate).toLocaleDateString()}</p></div>
+                        </div>
+                    </div>
+                     <div className="bg-slate-800/40 p-4 rounded-lg">
+                        <h3 className="text-lg font-semibold text-slate-200 mb-4">Wallet Management</h3>
+                        <div className="space-y-2">
+                            <Input id="detailAmount" label="Amount (use '-' for deduction)" type="number" placeholder="e.g. 50" value={detailAdjustment.amount} onChange={e => setDetailAdjustment({...detailAdjustment, amount: e.target.value})} />
+                            <Input id="detailReason" label="Reason" type="text" placeholder="e.g. Bonus payout" value={detailAdjustment.reason} onChange={e => setDetailAdjustment({...detailAdjustment, reason: e.target.value})} />
+                            <button onClick={handleDetailAdjustWallet} className="w-full mt-2 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold py-2 px-4 rounded-lg">Apply Adjustment</button>
+                        </div>
+                    </div>
+                    <div className="bg-slate-800/40 p-4 rounded-lg">
+                        <h3 className="text-lg font-semibold text-slate-200 mb-4">User Actions</h3>
+                        <button onClick={() => onAdminUpdateUser(user.email, { banned: !user.banned })} className={`w-full font-bold py-2 px-3 rounded text-sm ${user.banned ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-red-600 hover:bg-red-500 text-white'}`}>{user.banned ? 'Unban User' : 'Ban User'}</button>
+                    </div>
+                </div>
+
+                {/* Right Column */}
+                <div className="bg-slate-800/40 p-4 rounded-lg flex flex-col">
+                    <h3 className="text-lg font-semibold text-slate-200 mb-2 flex-shrink-0">Transaction History</h3>
+                    <input type="text" placeholder="Search transactions..." value={txSearch} onChange={e => setTxSearch(e.target.value)} className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg py-2 px-3 mb-4 text-white flex-shrink-0" />
+                    <div className="overflow-y-auto flex-grow">
+                        <table className="w-full text-sm text-left text-slate-300"><thead className="text-xs text-slate-400 uppercase bg-slate-800/80 sticky top-0"><tr><th className="px-4 py-2">Date</th><th className="px-4 py-2">Type</th><th className="px-4 py-2">Amount</th><th className="px-4 py-2">Description</th><th className="px-4 py-2">Status</th></tr></thead><tbody className="divide-y divide-slate-700">{filteredTxs.map(tx => (<tr key={tx.id} className="hover:bg-slate-700/50"><td className="px-4 py-2 text-xs">{new Date(tx.timestamp).toLocaleString()}</td><td className="px-4 py-2 uppercase text-xs font-bold">{tx.type.replace(/_/g, ' ')}</td><td className={`px-4 py-2 font-roboto-mono font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>{tx.amount > 0 ? '+' : ''}${tx.amount.toLocaleString()}</td><td className="px-4 py-2">{tx.description}</td><td className="px-4 py-2"><span className={`px-2 py-0.5 text-xs rounded-full ${tx.status === 'completed' ? 'bg-green-500/20 text-green-300' : tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-red-500/20 text-red-300'}`}>{tx.status}</span></td></tr>))}</tbody></table>
+                        {filteredTxs.length === 0 && <p className="text-slate-500 text-center py-8">No transactions found.</p>}
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -739,29 +988,51 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
       <div className="flex-grow overflow-y-auto pr-2 space-y-4">
           <Input label="Contest Title" id="title" type="text" value={currentContest?.title || ''} onChange={e => setCurrentContest({...currentContest, title: e.target.value})} />
           <Textarea label="Description" id="description" value={currentContest?.description || ''} onChange={e => setCurrentContest({...currentContest, description: e.target.value})} rows={2} />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Select label="Category" id="category" value={currentContest?.category} onChange={e => setCurrentContest({...currentContest, category: e.target.value})}>
                 {initialSettings.categories.map(c => <option key={c} value={c}>{c}</option>)}
             </Select>
-            <Select label="Format" id="format" value={currentContest?.format} onChange={e => setCurrentContest({...currentContest, format: e.target.value as 'KBC' | 'FastestFinger'})}>
+            <Select label="Format" id="format" value={currentContest?.format} onChange={e => {
+                const newFormat = e.target.value as 'KBC' | 'FastestFinger';
+                const updates: Partial<Contest> = { format: newFormat };
+                if (newFormat === 'KBC') {
+                    updates.numberOfQuestions = 15;
+                }
+                setCurrentContest({ ...currentContest, ...updates });
+            }}>
                 <option value="KBC">KBC (Prize Ladder)</option>
                 <option value="FastestFinger">Fastest Finger (Score & Time)</option>
             </Select>
+            <Input
+                label="Number of Questions"
+                id="numberOfQuestions"
+                type="number"
+                min="1"
+                value={currentContest?.numberOfQuestions ?? 15}
+                onChange={e => setCurrentContest({ ...currentContest, numberOfQuestions: Number(e.target.value) })}
+                disabled={currentContest?.format === 'KBC'}
+            />
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <Input label="Entry Fee ($)" id="entryFee" type="number" value={currentContest?.entryFee ?? 0} onChange={e => setCurrentContest({...currentContest, entryFee: Number(e.target.value)})} />
             <Input label="Prize Pool ($)" id="prizePool" type="number" value={currentContest?.prizePool ?? 0} onChange={e => setCurrentContest({...currentContest, prizePool: Number(e.target.value)})} />
             <Input label="Max Participants" id="maxParticipants" type="number" value={currentContest?.maxParticipants ?? 0} onChange={e => setCurrentContest({...currentContest, maxParticipants: Number(e.target.value)})} />
-            <Select label="Timer Type" id="timerType" value={currentContest?.timerType} onChange={e => setCurrentContest({...currentContest, timerType: e.target.value as 'per_question' | 'total_contest'})}>
-                <option value="per_question">Per Question</option>
-                <option value="total_contest">Total Contest Time</option>
-            </Select>
-            {currentContest?.timerType === 'per_question' ? (
-                <Input label="Time Per Question (s)" id="timePerQuestion" type="number" value={currentContest?.timePerQuestion ?? 0} onChange={e => setCurrentContest({...currentContest, timePerQuestion: Number(e.target.value)})} />
-            ) : (
-                 <Input label="Total Contest Time (s)" id="totalContestTime" type="number" value={currentContest?.totalContestTime ?? 0} onChange={e => setCurrentContest({...currentContest, totalContestTime: Number(e.target.value)})} />
-            )}
+            
           </div>
+          <Select label="Timer Type" id="timerType" value={currentContest?.timerType} onChange={e => setCurrentContest({...currentContest, timerType: e.target.value as 'per_question' | 'total_contest'})}>
+              <option value="per_question">Per Question</option>
+              <option value="total_contest">Total Contest Time</option>
+          </Select>
+          {currentContest?.timerType === 'per_question' ? (
+              <Input label="Time Per Question (s)" id="timePerQuestion" type="number" value={currentContest?.timePerQuestion ?? 0} onChange={e => setCurrentContest({...currentContest, timePerQuestion: Number(e.target.value)})} />
+          ) : (
+                <TimeSelector
+                    label="Total Contest Time"
+                    id="totalContestTime"
+                    value={currentContest?.totalContestTime ?? 0}
+                    onChange={seconds => setCurrentContest({ ...currentContest, totalContestTime: seconds })}
+                />
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                   <label className="block text-slate-300 text-sm font-semibold mb-1">Registration Start</label>
@@ -803,6 +1074,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
                                 <option>Easy</option><option>Medium</option><option>Hard</option><option>Expert</option>
                             </Select>
                         </div>
+                        <Input label="Number of Questions" id="ai-num-questions" type="number" min="1" max="50" value={aiFormParams.numberOfQuestions} onChange={e => setAiFormParams({...aiFormParams, numberOfQuestions: Number(e.target.value)})} />
                         <button onClick={handleGenerateQuestions} disabled={isGenerating} className="w-full bg-indigo-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-indigo-500 disabled:bg-slate-600 disabled:cursor-wait">
                             {isGenerating ? 'Generating...' : '✨ Generate & Verify'}
                         </button>
@@ -847,11 +1119,10 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-slate-800 border border-slate-600 rounded-lg p-8 w-full max-w-lg shadow-2xl relative animate-fade-in">
             <h3 className="text-2xl font-bold text-amber-400 mb-6">Create New Admin User</h3>
-            {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
             <div className="space-y-4">
-                <Input label="Full Name" id="admin-name" value={newAdminForm.name} onChange={e => { setNewAdminForm({...newAdminForm, name: e.target.value }); setError(null); }} />
-                <Input label="Email (Login ID)" id="admin-email" type="email" value={newAdminForm.email} onChange={e => { setNewAdminForm({...newAdminForm, email: e.target.value }); setError(null); }}/>
-                <Input label="Temporary Password" id="admin-password" type="text" value={newAdminForm.password} onChange={e => { setNewAdminForm({...newAdminForm, password: e.target.value }); setError(null); }}/>
+                <Input label="Full Name" id="admin-name" value={newAdminForm.name} onChange={e => setNewAdminForm({...newAdminForm, name: e.target.value })} />
+                <Input label="Email (Login ID)" id="admin-email" type="email" value={newAdminForm.email} onChange={e => setNewAdminForm({...newAdminForm, email: e.target.value })}/>
+                <Input label="Temporary Password" id="admin-password" type="text" value={newAdminForm.password} onChange={e => setNewAdminForm({...newAdminForm, password: e.target.value })}/>
                 <Select label="Role" id="admin-role" value={newAdminForm.role} onChange={e => setNewAdminForm({...newAdminForm, role: e.target.value as AdminRole })}>
                     <option value="Contest Manager">Contest Manager</option>
                     <option value="Finance Manager">Finance Manager</option>
@@ -860,13 +1131,13 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
                 </Select>
             </div>
             <div className="flex justify-end gap-4 mt-8">
-                <button onClick={() => { setIsCreatingAdmin(false); setError(null); }} className="bg-slate-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-slate-500">Cancel</button>
+                <button onClick={() => setIsCreatingAdmin(false)} className="bg-slate-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-slate-500">Cancel</button>
                 <button onClick={handleCreateAdminSubmit} className="bg-green-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-500">Create Admin</button>
             </div>
         </div>
      </div>
   );
-
+  
   return (
     <div className="flex flex-col h-full text-white p-4 sm:p-8 bg-slate-900/50 backdrop-blur-sm rounded-lg relative">
       <div className="flex justify-between items-center mb-6 flex-shrink-0">
@@ -874,14 +1145,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
          {view !== 'main' && <button onClick={() => setView('main')} className="bg-slate-600 font-bold py-2 px-4 rounded-lg">&larr; Back to Main</button>}
       </div>
       
-      {error && view === 'main' && (
-        <div className="bg-red-500/20 border border-red-500 text-red-300 px-4 py-3 rounded-lg relative mb-4 flex-shrink-0" role="alert">
-          <p><strong className="font-bold">Error: </strong>{error}</p>
-          <button onClick={() => setError(null)} className="absolute top-1 right-2 text-2xl">&times;</button>
-        </div>
-      )}
-      
-      {view === 'main' && <div className="flex flex-col flex-grow overflow-y-hidden"><div className="flex border-b border-slate-700 mb-6 flex-shrink-0">{hasPermission('MANAGE_CONTESTS') && <TabButton tabName="contests" label="Contests" activeTab={activeTab} setActiveTab={setActiveTab} />}{hasPermission('MANAGE_USERS') && <TabButton tabName="users" label="Users" activeTab={activeTab} setActiveTab={setActiveTab} />}{hasPermission('MANAGE_FINANCE') && <TabButton tabName="finance" label="Finance" activeTab={activeTab} setActiveTab={setActiveTab} />}{hasPermission('MANAGE_ADMINS') && <TabButton tabName="admins" label="Admins" activeTab={activeTab} setActiveTab={setActiveTab} />}{hasPermission('MANAGE_SETTINGS') && <TabButton tabName="settings" label="Global Settings" activeTab={activeTab} setActiveTab={setActiveTab} />}</div><div className="flex-grow overflow-y-auto pr-2">{activeTab === 'contests' && hasPermission('MANAGE_CONTESTS') && renderContestsView()}{activeTab === 'users' && hasPermission('MANAGE_USERS') && renderUsersView()}{activeTab === 'finance' && hasPermission('MANAGE_FINANCE') && renderFinanceView()}{activeTab === 'admins' && hasPermission('MANAGE_ADMINS') && renderAdminsView()}{activeTab === 'settings' && hasPermission('MANAGE_SETTINGS') && renderSettingsView()}</div></div>}
+      {view === 'main' && <div className="flex flex-col flex-grow overflow-y-hidden"><div className="flex border-b border-slate-700 mb-6 flex-shrink-0">{hasPermission('MANAGE_CONTESTS') && <TabButton tabName="dashboard" label="Dashboard" activeTab={activeTab} setActiveTab={setActiveTab} icon={<DashboardIcon />} />}<TabButton tabName="contests" label="Contests" activeTab={activeTab} setActiveTab={setActiveTab} icon={<ContestsIcon />} />{hasPermission('MANAGE_USERS') && <TabButton tabName="users" label="Users" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminUsersIcon />} />}{hasPermission('MANAGE_FINANCE') && <TabButton tabName="finance" label="Finance" activeTab={activeTab} setActiveTab={setActiveTab} icon={<FinanceIcon />} />}{hasPermission('MANAGE_ADMINS') && <TabButton tabName="admins" label="Admins" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminManagementIcon />} />}{hasPermission('MANAGE_SETTINGS') && <TabButton tabName="settings" label="Global Settings" activeTab={activeTab} setActiveTab={setActiveTab} icon={<GlobalSettingsIcon />} />}</div><div className="flex-grow overflow-y-auto pr-2">{activeTab === 'dashboard' && hasPermission('MANAGE_CONTESTS') && renderDashboardView()}{activeTab === 'contests' && hasPermission('MANAGE_CONTESTS') && renderContestsView()}{activeTab === 'users' && hasPermission('MANAGE_USERS') && renderUsersView()}{activeTab === 'finance' && hasPermission('MANAGE_FINANCE') && renderFinanceView()}{activeTab === 'admins' && hasPermission('MANAGE_ADMINS') && renderAdminsView()}{activeTab === 'settings' && hasPermission('MANAGE_SETTINGS') && renderSettingsView()}</div></div>}
       {view === 'edit_contest' && hasPermission('MANAGE_CONTESTS') && currentContest && renderContestForm()}
       {view === 'verify_questions' && hasPermission('MANAGE_CONTESTS') && currentContest && renderVerifyQuestions()}
 
@@ -912,6 +1176,13 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
             />
         )}
         {isCreatingAdmin && hasPermission('MANAGE_ADMINS') && renderCreateAdminModal()}
+        {viewingContest && <ContestDetailModal contest={viewingContest} users={users} onClose={() => setViewingContest(null)} />}
+        {/* Toast Container */}
+        <div className="absolute bottom-4 right-4 flex flex-col gap-3 z-50">
+            {toasts.map(toast => (
+                <ToastComponent key={toast.id} toast={toast} onDismiss={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} />
+            ))}
+        </div>
     </div>
   );
 };

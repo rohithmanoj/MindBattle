@@ -19,6 +19,7 @@ export const MOCK_CONTESTS: Contest[] = [
     format: 'KBC',
     timerType: 'per_question',
     timePerQuestion: 30,
+    numberOfQuestions: 15,
   },
   {
     id: 'c2',
@@ -38,6 +39,7 @@ export const MOCK_CONTESTS: Contest[] = [
     format: 'KBC',
     timerType: 'per_question',
     timePerQuestion: 45,
+    numberOfQuestions: 15,
   },
   {
     id: 'c3',
@@ -57,6 +59,7 @@ export const MOCK_CONTESTS: Contest[] = [
     format: 'KBC',
     timerType: 'per_question',
     timePerQuestion: 35,
+    numberOfQuestions: 15,
   },
   {
     id: 'c4',
@@ -76,6 +79,7 @@ export const MOCK_CONTESTS: Contest[] = [
     format: 'KBC',
     timerType: 'per_question',
     timePerQuestion: 25,
+    numberOfQuestions: 15,
   },
     {
     id: 'c5',
@@ -95,6 +99,7 @@ export const MOCK_CONTESTS: Contest[] = [
     format: 'KBC',
     timerType: 'per_question',
     timePerQuestion: 30,
+    numberOfQuestions: 15,
   },
   {
     id: 'c6',
@@ -114,5 +119,6 @@ export const MOCK_CONTESTS: Contest[] = [
     format: 'KBC',
     timerType: 'per_question',
     timePerQuestion: 60,
+    numberOfQuestions: 15,
   },
 ];

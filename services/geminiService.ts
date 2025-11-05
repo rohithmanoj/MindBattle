@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { QuizQuestion, Contest } from '../types';
 
@@ -8,12 +9,12 @@ if (!process.env.API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const quizSchema = {
+const getQuizSchema = (count: number) => ({
     type: Type.OBJECT,
     properties: {
       questions: {
         type: Type.ARRAY,
-        description: "An array of 15 quiz questions.",
+        description: `An array of ${count} quiz questions.`,
         items: {
           type: Type.OBJECT,
           properties: {
@@ -38,27 +39,27 @@ const quizSchema = {
       }
     },
     required: ['questions']
-};
+});
 
 
-const contestSchema = {
+const getContestSchema = (count: number) => ({
     type: Type.OBJECT,
     properties: {
         title: { type: Type.STRING, description: "A catchy and relevant title for the quiz contest." },
         description: { type: Type.STRING, description: "A brief, engaging description of the contest." },
         category: { type: Type.STRING, description: "The primary category of the contest topic." },
         rules: { type: Type.STRING, description: "A summary of the rules for the contest." },
-        questions: quizSchema.properties.questions, // Re-use the questions schema
+        questions: getQuizSchema(count).properties.questions, // Re-use the questions schema
     },
     required: ['title', 'description', 'category', 'rules', 'questions']
-};
+});
 
 
-export const generateQuiz = async (category: string): Promise<QuizQuestion[]> => {
+export const generateQuiz = async (category: string, numberOfQuestions: number = 15): Promise<QuizQuestion[]> => {
   try {
-    const prompt = `Generate a set of 15 multiple-choice trivia questions for a quiz game like 'Who Wants to Be a Millionaire?'.
+    const prompt = `Generate a set of ${numberOfQuestions} multiple-choice trivia questions for a quiz game like 'Who Wants to Be a Millionaire?'.
     The category is "${category}".
-    The questions should gradually increase in difficulty. The first 5 should be easy, the next 5 medium, and the final 5 should be very difficult.
+    The questions should gradually increase in difficulty. The first few should be easy, the middle ones medium, and the final ones should be very difficult.
     Each question must have exactly 4 options.
     For each question, specify the correct answer, ensuring it is an exact match to one of the options.
     Return the output in the specified JSON format.`;
@@ -68,7 +69,7 @@ export const generateQuiz = async (category: string): Promise<QuizQuestion[]> =>
         contents: prompt,
         config: {
             responseMimeType: 'application/json',
-            responseSchema: quizSchema,
+            responseSchema: getQuizSchema(numberOfQuestions),
         },
     });
 
@@ -87,7 +88,7 @@ export const generateQuiz = async (category: string): Promise<QuizQuestion[]> =>
   }
 };
 
-export const generateContestWithAI = async (topic: string, ageGroup: string, difficulty: string): Promise<Partial<Contest>> => {
+export const generateContestWithAI = async (topic: string, ageGroup: string, difficulty: string, numberOfQuestions: number = 15): Promise<Partial<Contest>> => {
     try {
         const prompt = `Generate a complete quiz contest based on the following criteria:
         - Topic: "${topic}"
@@ -95,8 +96,8 @@ export const generateContestWithAI = async (topic: string, ageGroup: string, dif
         - Difficulty Level: ${difficulty}
 
         Create a suitable title, a short and exciting description, a relevant category, and a brief set of rules for the contest.
-        Also, generate a set of 15 multiple-choice trivia questions on the specified topic. The questions should be appropriate for the target age and difficulty.
-        The difficulty should ramp up: the first 5 questions should be easy, the next 5 medium, and the final 5 very difficult.
+        Also, generate a set of ${numberOfQuestions} multiple-choice trivia questions on the specified topic. The questions should be appropriate for the target age and difficulty.
+        The difficulty should ramp up: the first few questions should be easy, the middle ones medium, and the final ones very difficult.
         Each question must have exactly 4 answer options, with one clearly correct answer.
         
         Return the entire contest structure in the specified JSON format.`;
@@ -106,7 +107,7 @@ export const generateContestWithAI = async (topic: string, ageGroup: string, dif
             contents: prompt,
             config: {
                 responseMimeType: 'application/json',
-                responseSchema: contestSchema,
+                responseSchema: getContestSchema(numberOfQuestions),
             },
         });
 
@@ -124,6 +125,7 @@ export const generateContestWithAI = async (topic: string, ageGroup: string, dif
             category: parsed.category,
             rules: parsed.rules,
             questions: parsed.questions,
+            numberOfQuestions: parsed.questions.length,
         };
 
     } catch (error) {

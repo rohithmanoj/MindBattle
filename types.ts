@@ -1,4 +1,4 @@
-export type AppView = 'home' | 'login' | 'register' | 'loading' | 'playing' | 'end' | 'admin' | 'wallet' | 'payment' | 'admin-login' | 'waiting_room' | 'create_contest';
+export type AppView = 'home' | 'login' | 'register' | 'loading' | 'playing' | 'end' | 'admin' | 'wallet' | 'payment' | 'admin-login' | 'waiting_room' | 'create_contest' | 'leaderboard';
 
 export interface QuizQuestion {
   question: string;
@@ -24,6 +24,13 @@ export interface GameSettings {
   timePerQuestion: number;
 }
 
+export interface ContestResult {
+  userId: string; // user email
+  name: string;
+  score: number; // for FF: score, for KBC: prize money
+  time?: number; // for FF
+}
+
 export interface Contest {
   id: string;
   title: string;
@@ -43,7 +50,9 @@ export interface Contest {
   timerType: 'per_question' | 'total_contest';
   timePerQuestion: number;
   totalContestTime?: number; // in seconds, for 'total_contest' type
+  numberOfQuestions: number;
   createdBy?: string; // email of the user who created it
+  results?: ContestResult[];
 }
 
 export type GameResults =
@@ -78,4 +87,10 @@ export interface User {
 export interface StoredUser extends User {
   password: string;
   banned?: boolean;
+}
+
+export interface Toast {
+  id: number;
+  message: string;
+  type: 'success' | 'error' | 'info';
 }

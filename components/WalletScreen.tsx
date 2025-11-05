@@ -8,6 +8,35 @@ interface WalletScreenProps {
   onBack: () => void;
 }
 
+const getStatusBadge = (tx: Transaction) => {
+    if (tx.status === 'pending') {
+        return <span className="text-xs font-semibold px-2 py-1 bg-yellow-500/20 text-yellow-300 rounded-full ml-2">Pending</span>
+    }
+    if (tx.status === 'declined') {
+        return <span className="text-xs font-semibold px-2 py-1 bg-red-500/20 text-red-300 rounded-full ml-2">Declined</span>
+    }
+    return null;
+}
+
+const TransactionRow: React.FC<{ transaction: Transaction }> = ({ transaction }) => {
+  const isCredit = transaction.amount > 0;
+  const amountColor = isCredit ? 'text-green-400' : 'text-red-400';
+  const sign = isCredit ? '+' : '';
+
+  return (
+    <li className="flex justify-between items-center py-3 px-4 bg-slate-800/50 rounded-lg">
+      <div>
+        <div className="flex items-center">
+          <p className="font-semibold text-white">{transaction.description}</p>
+          {getStatusBadge(transaction)}
+        </div>
+        <p className="text-xs text-slate-400">{new Date(transaction.timestamp).toLocaleString()}</p>
+      </div>
+      <p className={`font-bold text-lg font-roboto-mono ${amountColor}`}>{sign}${transaction.amount.toLocaleString()}</p>
+    </li>
+  );
+};
+
 const WalletScreen: React.FC<WalletScreenProps> = ({ currentUser, onStartDeposit, onWithdraw, onBack }) => {
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -39,35 +68,6 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ currentUser, onStartDeposit
     setError(null);
     onWithdraw(amount);
     setWithdrawAmount('');
-  };
-  
-  const getStatusBadge = (tx: Transaction) => {
-      if (tx.status === 'pending') {
-          return <span className="text-xs font-semibold px-2 py-1 bg-yellow-500/20 text-yellow-300 rounded-full ml-2">Pending</span>
-      }
-      if (tx.status === 'declined') {
-          return <span className="text-xs font-semibold px-2 py-1 bg-red-500/20 text-red-300 rounded-full ml-2">Declined</span>
-      }
-      return null;
-  }
-
-  const TransactionRow: React.FC<{ transaction: Transaction }> = ({ transaction }) => {
-    const isCredit = transaction.amount > 0;
-    const amountColor = isCredit ? 'text-green-400' : 'text-red-400';
-    const sign = isCredit ? '+' : '';
-
-    return (
-      <li className="flex justify-between items-center py-3 px-4 bg-slate-800/50 rounded-lg">
-        <div>
-          <div className="flex items-center">
-            <p className="font-semibold text-white">{transaction.description}</p>
-            {getStatusBadge(transaction)}
-          </div>
-          <p className="text-xs text-slate-400">{new Date(transaction.timestamp).toLocaleString()}</p>
-        </div>
-        <p className={`font-bold text-lg font-roboto-mono ${amountColor}`}>{sign}${transaction.amount.toLocaleString()}</p>
-      </li>
-    );
   };
 
   return (

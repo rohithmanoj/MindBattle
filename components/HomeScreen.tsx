@@ -10,6 +10,7 @@ interface HomeScreenProps {
   isAdmin: boolean;
   onRegister: (contest: Contest) => void;
   onEnterContest: (contest: Contest) => void;
+  onViewLeaderboard: (contest: Contest) => void;
   onLoginRequest: () => void;
   onLogout: () => void;
   onGoToAdmin: () => void;
@@ -32,7 +33,7 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; children: Reac
 );
 
 
-const HomeScreen: React.FC<HomeScreenProps> = ({ contests, currentUser, isAdmin, onRegister, onEnterContest, onLoginRequest, onLogout, onGoToAdmin, onGoToWallet, onNavigateToCreateContest, error, clearError, categories }) => {
+const HomeScreen: React.FC<HomeScreenProps> = ({ contests, currentUser, isAdmin, onRegister, onEnterContest, onViewLeaderboard, onLoginRequest, onLogout, onGoToAdmin, onGoToWallet, onNavigateToCreateContest, error, clearError, categories }) => {
   const [activeTab, setActiveTab] = useState<Tab>('active');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -48,7 +49,20 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ contests, currentUser, isAdmin,
 
   const { activeContests, finishedContests, myContests, featuredContest } = useMemo(() => {
     const now = Date.now();
-    const isContestFinished = (c: Contest) => c.status === 'Finished' || now > c.contestStartDate + (2 * 60 * 60 * 1000);
+    
+    const isContestFinished = (c: Contest) => {
+        if (c.status === 'Finished') return true;
+        
+        // For FastestFinger, the end is precise.
+        if (c.format === 'FastestFinger' && c.timerType === 'total_contest' && c.totalContestTime) {
+            const endTime = c.contestStartDate + (c.totalContestTime * 1000);
+            return now > endTime;
+        }
+        
+        // For KBC or others, use a generous buffer to account for gameplay.
+        const endTime = c.contestStartDate + (2 * 60 * 60 * 1000);
+        return now > endTime;
+    };
 
     const approvedContests = contests.filter(c => c.status !== 'Draft' && c.status !== 'Pending Approval' && c.status !== 'Rejected');
     const active = approvedContests.filter(c => !isContestFinished(c));
@@ -137,6 +151,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ contests, currentUser, isAdmin,
                             contest={featuredContest}
                             onRegister={onRegister}
                             onEnterContest={onEnterContest}
+                            onViewLeaderboard={onViewLeaderboard}
                             currentUser={currentUser}
                         />
                      </div>
@@ -176,6 +191,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ contests, currentUser, isAdmin,
                   contest={contest} 
                   onRegister={onRegister}
                   onEnterContest={onEnterContest}
+                  onViewLeaderboard={onViewLeaderboard}
                   currentUser={currentUser}
                   isMyContestView={activeTab === 'my_contests'}
                 />
