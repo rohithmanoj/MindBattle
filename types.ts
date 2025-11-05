@@ -1,3 +1,4 @@
+
 export type AppView = 'home' | 'login' | 'register' | 'loading' | 'playing' | 'end' | 'admin' | 'wallet' | 'payment' | 'admin-login' | 'waiting_room' | 'create_contest' | 'leaderboard';
 
 export interface QuizQuestion {
@@ -34,7 +35,7 @@ export interface ContestResult {
 export interface Contest {
   id: string;
   title: string;
-  description: string;
+  description:string;
   category: string;
   entryFee: number;
   prizePool: number;
@@ -93,4 +94,18 @@ export interface Toast {
   id: number;
   message: string;
   type: 'success' | 'error' | 'info';
+}
+
+export type WalletActionType = 'DEPOSIT' | 'WITHDRAWAL_REQUEST' | 'WITHDRAWAL_APPROVE' | 'WITHDRAWAL_DECLINE' | 'CONTEST_ENTRY' | 'CONTEST_WIN' | 'CONTEST_REFUND' | 'ADMIN_ADJUSTMENT';
+
+export interface WalletAction {
+    type: WalletActionType;
+    payload: {
+        userId: string;
+        amount: number;
+        description: string;
+        transactionId?: string; // For updates like approve/decline
+        status?: 'completed' | 'pending' | 'declined';
+        updatedBy?: string; // Admin email
+    };
 }

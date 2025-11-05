@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { AppView, QuizQuestion, GameSettings, Contest, User, StoredUser, Transaction, TransactionType, AdminRole, GameResults, ContestResult } from './types';
+import { AppView, QuizQuestion, GameSettings, Contest, User, StoredUser, Transaction, TransactionType, AdminRole, GameResults, ContestResult, WalletAction } from './types';
 import HomeScreen from './components/HomeScreen';
 import QuizScreen from './components/QuizScreen';
 import EndScreen from './components/EndScreen';
@@ -16,6 +16,8 @@ import CreateContestScreen from './components/CreateContestScreen';
 import LeaderboardScreen from './components/LeaderboardScreen';
 import { DEFAULT_CATEGORIES, DEFAULT_PRIZE_AMOUNTS, DEFAULT_PAYMENT_GATEWAY_SETTINGS, ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_TIME_PER_QUESTION } from './constants';
 import { MOCK_CONTESTS } from './data';
+import { processWalletAction } from './services/walletService';
+import { generateTransactionDescription } from './services/geminiService';
 
 
 const App: React.FC = () => {
@@ -163,14 +165,8 @@ const App: React.FC = () => {
   }, [contests]);
 
   useEffect(() => {
-    // This effect ensures that the `currentUser` state is always in sync with the canonical `users` list.
-    // This is important because other operations might update a user's details in the `users` array,
-    // and `currentUser` needs to reflect those changes (e.g., wallet balance updates).
     if (currentUser?.email) {
         const freshUserData = users.find(u => u.email === currentUser.email);
-        
-        // Deep comparison to prevent infinite re-render loops.
-        // Only update if the user data in the list is actually different from the current user state.
         if (freshUserData && JSON.stringify(freshUserData) !== JSON.stringify(currentUser)) {
             setCurrentUser(freshUserData);
         }
@@ -178,29 +174,11 @@ const App: React.FC = () => {
   }, [users, currentUser]);
 
 
-  const addTransaction = useCallback((userId: string, type: TransactionType, amount: number, description: string, status: 'completed' | 'pending' = 'completed') => {
-      setUsers(prevUsers => {
+  const dispatchWalletAction = useCallback((action: WalletAction) => {
+    setUsers(prevUsers => {
         const updatedUsers = prevUsers.map(user => {
-            if (user.email === userId) {
-                const newTransaction: Transaction = {
-                  id: `txn_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-                  type,
-                  amount: ['withdrawal', 'entry_fee', 'pending_withdrawal'].includes(type) ? -Math.abs(amount) : amount,
-                  description,
-                  timestamp: Date.now(),
-                  status,
-                };
-                
-                let newBalance = user.walletBalance;
-                if (type !== 'pending_withdrawal') {
-                  newBalance += newTransaction.amount;
-                }
-                
-                return {
-                  ...user,
-                  walletBalance: newBalance,
-                  transactions: [newTransaction, ...(user.transactions || [])],
-                };
+            if (user.email === action.payload.userId) {
+                return processWalletAction(user, action);
             }
             return user;
         });
@@ -209,43 +187,35 @@ const App: React.FC = () => {
             localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
         }
         return updatedUsers;
-      });
+    });
   }, []);
   
-  const handleAdminAdjustWallet = useCallback((userId: string, amount: number, reason: string) => {
-    const adminId = currentUser?.email;
-    if (!isAdmin || !adminId) return;
+  const handleAdminAdjustWalletAI = useCallback(async (userId: string, amount: number, reasonKeywords: string, adminId: string) => {
+      const description = await generateTransactionDescription(reasonKeywords, amount);
+      dispatchWalletAction({
+          type: 'ADMIN_ADJUSTMENT',
+          payload: {
+              userId,
+              amount,
+              description,
+              updatedBy: adminId,
+          },
+      });
+  }, [dispatchWalletAction]);
 
-    setUsers(prevUsers => {
-        const updatedUsers = prevUsers.map(user => {
-            if (user.email === userId) {
-                const newBalance = user.walletBalance + amount;
-                const adjustmentTx: Transaction = {
-                    id: `txn_adj_${Date.now()}`,
-                    type: 'admin_adjustment',
-                    amount: amount,
-                    description: `Admin adjustment: ${reason}`,
-                    timestamp: Date.now(),
-                    status: 'completed',
-                    updatedBy: adminId,
-                };
-                
-                return {
-                    ...user,
-                    walletBalance: newBalance,
-                    transactions: [adjustmentTx, ...(user.transactions || [])],
-                };
-            }
-            return user;
-        });
-
-        if (JSON.stringify(prevUsers) !== JSON.stringify(updatedUsers)) {
-             localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+  const handleAdminUpdateWithdrawal = useCallback((userId: string, transactionId: string, action: 'approve' | 'decline', adminId: string) => {
+    dispatchWalletAction({
+        type: action === 'approve' ? 'WITHDRAWAL_APPROVE' : 'WITHDRAWAL_DECLINE',
+        payload: {
+            userId,
+            amount: 0, // amount is irrelevant here, it's derived from the original tx
+            description: '', // service will provide a default
+            transactionId,
+            updatedBy: adminId,
         }
-
-        return updatedUsers;
     });
-}, [currentUser, isAdmin]);
+  }, [dispatchWalletAction]);
+
 
   const handleRegisterForContest = useCallback((contest: Contest) => {
     if (!currentUser) {
@@ -277,7 +247,14 @@ const App: React.FC = () => {
     }
     
     if (contest.entryFee > 0) {
-        addTransaction(currentUser.email, 'entry_fee', contest.entryFee, `Entry for ${contest.title}`);
+        dispatchWalletAction({
+            type: 'CONTEST_ENTRY',
+            payload: {
+                userId: currentUser.email,
+                amount: contest.entryFee,
+                description: `Entry for ${contest.title}`,
+            }
+        });
     }
 
     setContests(prevContests => {
@@ -288,7 +265,7 @@ const App: React.FC = () => {
       return updatedContests;
     });
     
-  }, [currentUser, addTransaction, users]);
+  }, [currentUser, dispatchWalletAction, users]);
   
   const handleEnterContest = useCallback((contest: Contest) => {
     if (!contest.questions || contest.questions.length === 0) {
@@ -307,7 +284,14 @@ const App: React.FC = () => {
 
           if (results.format === 'KBC') {
               if (results.score > 0) {
-                  addTransaction(currentUser.email, 'win', results.score, `Prize from ${activeContest.title}`);
+                  dispatchWalletAction({
+                      type: 'CONTEST_WIN',
+                      payload: {
+                          userId: currentUser.email,
+                          amount: results.score,
+                          description: `Prize from ${activeContest.title}`,
+                      }
+                  });
               }
               newResult = {
                   userId: currentUser.email,
@@ -343,7 +327,7 @@ const App: React.FC = () => {
       }
       
       setAppView('end');
-  }, [activeContest, currentUser, addTransaction, isAdmin]);
+  }, [activeContest, currentUser, dispatchWalletAction, isAdmin]);
 
   const handleRestart = useCallback(() => {
     setActiveContest(null);
@@ -490,7 +474,14 @@ const App: React.FC = () => {
 
       contestToCancel.participants.forEach(participantEmail => {
           if (contestToCancel.entryFee > 0) {
-              addTransaction(participantEmail, 'refund', contestToCancel.entryFee, `Refund for cancelled contest: ${contestToCancel.title}`);
+              dispatchWalletAction({
+                  type: 'CONTEST_REFUND',
+                  payload: {
+                      userId: participantEmail,
+                      amount: contestToCancel.entryFee,
+                      description: `Refund for cancelled contest: ${contestToCancel.title}`,
+                  }
+              });
           }
       });
       
@@ -501,7 +492,7 @@ const App: React.FC = () => {
         localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
         return updatedContests;
       });
-  }, [contests, addTransaction]);
+  }, [contests, dispatchWalletAction]);
   
   const handleGoToWallet = useCallback(() => {
     setAppView('wallet');
@@ -516,11 +507,18 @@ const App: React.FC = () => {
   
   const handlePaymentSuccess = useCallback(() => {
     if (currentUser && depositInProgress) {
-      addTransaction(currentUser.email, 'deposit', depositInProgress.amount, 'User deposit via gateway');
+      dispatchWalletAction({
+          type: 'DEPOSIT',
+          payload: {
+              userId: currentUser.email,
+              amount: depositInProgress.amount,
+              description: 'User deposit via gateway',
+          }
+      });
       setDepositInProgress(null);
       setAppView('wallet');
     }
-  }, [currentUser, depositInProgress, addTransaction]);
+  }, [currentUser, depositInProgress, dispatchWalletAction]);
 
   const handlePaymentCancel = useCallback(() => {
     setDepositInProgress(null);
@@ -529,56 +527,16 @@ const App: React.FC = () => {
 
   const handleWithdraw = useCallback((amount: number) => {
     if(currentUser) {
-        addTransaction(currentUser.email, 'pending_withdrawal', amount, 'Withdrawal request', 'pending');
+        dispatchWalletAction({
+            type: 'WITHDRAWAL_REQUEST',
+            payload: {
+                userId: currentUser.email,
+                amount: amount,
+                description: 'Withdrawal request',
+            }
+        });
     }
-  }, [currentUser, addTransaction]);
-
-  const handleUpdateWithdrawal = useCallback((userId: string, transactionId: string, action: 'approve' | 'decline') => {
-    const adminId = currentUser?.email;
-    if (!isAdmin || !adminId) return;
-
-    setUsers(prevUsers => {
-      const updatedUsers = prevUsers.map(user => {
-        if (user.email === userId) {
-          const txIndex = (user.transactions || []).findIndex(tx => tx.id === transactionId && tx.status === 'pending');
-          if (txIndex === -1) {
-            return user; // No change for this user
-          }
-
-          const updatedTransactions = [...user.transactions];
-          const originalTx = updatedTransactions[txIndex];
-
-          if (action === 'approve') {
-              updatedTransactions[txIndex] = { 
-                  ...originalTx, type: 'withdrawal', status: 'completed', 
-                  description: 'Withdrawal approved by admin', updatedBy: adminId,
-              };
-              return {
-                ...user,
-                walletBalance: user.walletBalance + originalTx.amount, // originalTx.amount is negative
-                transactions: updatedTransactions,
-              };
-          } else { // Decline
-              updatedTransactions[txIndex] = { 
-                  ...originalTx, type: 'withdrawal_declined', status: 'declined', 
-                  description: 'Withdrawal declined by admin', updatedBy: adminId,
-              };
-              // No balance change on decline
-              return {
-                ...user,
-                transactions: updatedTransactions,
-              };
-          }
-        }
-        return user;
-      });
-      
-      if (JSON.stringify(prevUsers) !== JSON.stringify(updatedUsers)) {
-        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-      }
-      return updatedUsers;
-    });
-  }, [currentUser, isAdmin]);
+  }, [currentUser, dispatchWalletAction]);
 
   const handleAdminCreateAdmin = useCallback((name: string, email: string, password: string, role: AdminRole): { success: boolean, message: string } => {
       if (users.some(u => u.email === email)) {
@@ -649,10 +607,10 @@ const App: React.FC = () => {
         return isAdmin ? <AdminScreen 
             initialSettings={gameSettings} currentUser={currentUser!}
             onSaveSettings={handleAdminSaveSettings} onCancel={() => setAppView('home')} 
-            users={users} onUpdateWithdrawal={handleUpdateWithdrawal}
+            users={users} onUpdateWithdrawal={handleAdminUpdateWithdrawal}
             contests={contests} onCreateContest={handleCreateContest} onUpdateContest={handleUpdateContest}
             onDeleteContest={handleDeleteContest} onAdminUpdateUser={handleAdminUpdateUser}
-            onUpdateUserRole={handleUpdateUserRole} onCancelContest={handleCancelContest} onAdjustWallet={handleAdminAdjustWallet}
+            onUpdateUserRole={handleUpdateUserRole} onCancelContest={handleCancelContest} onAdjustWallet={handleAdminAdjustWalletAI}
             onAdminCreateAdmin={handleAdminCreateAdmin}
          /> : <HomeScreen contests={contests} currentUser={currentUser} isAdmin={isAdmin} onRegister={handleRegisterForContest} onEnterContest={handleEnterContest} onLoginRequest={() => setAppView('login')} onLogout={handleLogout} onGoToAdmin={handleGoToAdmin} onGoToWallet={handleGoToWallet} onNavigateToCreateContest={() => setAppView('create_contest')} error={error} clearError={() => setError(null)} categories={gameSettings.categories} onViewLeaderboard={handleViewLeaderboard} />;
       case 'wallet':

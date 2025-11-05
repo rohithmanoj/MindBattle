@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { GameSettings, StoredUser, Transaction, Contest, QuizQuestion, AdminRole, AdminPermission, User, Toast } from '../types';
 import { generateContestWithAI } from '../services/geminiService';
@@ -321,14 +322,14 @@ interface AdminScreenProps {
   currentUser: User;
   onSaveSettings: (newSettings: GameSettings) => void;
   onCancel: () => void;
-  onUpdateWithdrawal: (userId: string, transactionId: string, action: 'approve' | 'decline') => void;
+  onUpdateWithdrawal: (userId: string, transactionId: string, action: 'approve' | 'decline', adminId: string) => void;
   onCreateContest: (newContest: Omit<Contest, 'id' | 'participants'>) => void;
   onUpdateContest: (updatedContest: Contest) => void;
   onDeleteContest: (contestId: string) => void;
   onAdminUpdateUser: (userId: string, updates: Partial<Pick<StoredUser, 'banned'>>) => void;
   onUpdateUserRole: (userId: string, role: AdminRole | 'None') => void;
   onCancelContest: (contestId: string) => void;
-  onAdjustWallet: (userId: string, amount: number, reason: string) => void;
+  onAdjustWallet: (userId: string, amount: number, reasonKeywords: string, adminId: string) => Promise<void>;
   onAdminCreateAdmin: (name: string, email: string, password: string, role: AdminRole) => { success: boolean, message: string };
 }
 
@@ -380,14 +381,15 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   const [viewingContest, setViewingContest] = useState<Contest | null>(null);
 
   // State for the user detail view
-  const [detailAdjustment, setDetailAdjustment] = useState({ amount: '', reason: '' });
+  const [detailAdjustment, setDetailAdjustment] = useState({ amount: '', reasonKeywords: '' });
+  const [isAdjustingWallet, setIsAdjustingWallet] = useState(false);
   const [txSearch, setTxSearch] = useState('');
   
 
   // Reset detail view state when switching users to prevent stale data.
   useEffect(() => {
     if (selectedUserEmail) {
-      setDetailAdjustment({ amount: '', reason: '' });
+      setDetailAdjustment({ amount: '', reasonKeywords: '' });
       setTxSearch('');
     }
   }, [selectedUserEmail]);
@@ -596,23 +598,26 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
        setGeneratedQuestions([]);
   };
 
-  const handleDetailAdjustWallet = (type: 'add' | 'deduct') => {
-    if (!selectedUser) return;
+  const handleDetailAdjustWallet = async (type: 'add' | 'deduct') => {
+    if (!selectedUser || !currentUser) return;
     const rawAmount = parseFloat(detailAdjustment.amount);
 
-    if (isNaN(rawAmount) || rawAmount <= 0 || !detailAdjustment.reason.trim()) {
-        addToast("Please provide a valid positive amount and a reason.", 'error');
+    if (isNaN(rawAmount) || rawAmount <= 0 || !detailAdjustment.reasonKeywords.trim()) {
+        addToast("Please provide a valid positive amount and some reason keywords.", 'error');
         return;
     }
     
     const finalAmount = type === 'add' ? rawAmount : -rawAmount;
     
-    const confirmationText = `Are you sure you want to ${type} $${rawAmount.toLocaleString()} ${type === 'add' ? 'to' : 'from'} ${selectedUser.name}'s wallet?`;
-
-    if (window.confirm(confirmationText)) {
-        onAdjustWallet(selectedUser.email, finalAmount, detailAdjustment.reason);
-        addToast("User wallet adjusted successfully!", 'success');
-        setDetailAdjustment({ amount: '', reason: '' });
+    setIsAdjustingWallet(true);
+    try {
+        await onAdjustWallet(selectedUser.email, finalAmount, detailAdjustment.reasonKeywords, currentUser.email);
+        addToast("User wallet adjusted successfully with AI-generated description!", 'success');
+        setDetailAdjustment({ amount: '', reasonKeywords: '' });
+    } catch (e) {
+        addToast("Failed to adjust wallet.", 'error');
+    } finally {
+        setIsAdjustingWallet(false);
     }
   };
 
@@ -919,7 +924,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
                                 </div>
                             </div>
                              <div className="bg-slate-800/40 p-4 rounded-lg">
-                                <h3 className="text-lg font-semibold text-slate-200 mb-4">Wallet Management</h3>
+                                <h3 className="text-lg font-semibold text-slate-200 mb-4">AI-Powered Wallet Adjustment</h3>
                                 <div className="space-y-3">
                                     <div>
                                         <label htmlFor="detailAmount" className="block text-slate-300 text-sm font-semibold mb-1">Amount</label>
@@ -934,15 +939,16 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
                                             />
                                         </div>
                                     </div>
-                                    <Input id="detailReason" label="Reason" type="text" placeholder="e.g. Bonus payout, refund, etc." value={detailAdjustment.reason} onChange={e => setDetailAdjustment({...detailAdjustment, reason: e.target.value})} />
+                                    <Input id="detailReason" label="Reason Keywords" type="text" placeholder="e.g. bonus, event winner, refund" value={detailAdjustment.reasonKeywords} onChange={e => setDetailAdjustment({...detailAdjustment, reasonKeywords: e.target.value})} />
                                     <div className="flex gap-3 pt-2">
-                                        <button onClick={() => handleDetailAdjustWallet('add')} className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-2.5 px-4 rounded-lg transition-colors duration-200">
-                                            Add to Wallet
+                                        <button onClick={() => handleDetailAdjustWallet('add')} disabled={isAdjustingWallet} className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-2.5 px-4 rounded-lg transition-colors duration-200 disabled:bg-slate-600 flex justify-center items-center gap-2">
+                                            {isAdjustingWallet ? 'Processing...' : '✨ Add to Wallet'}
                                         </button>
-                                        <button onClick={() => handleDetailAdjustWallet('deduct')} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 px-4 rounded-lg transition-colors duration-200">
-                                            Deduct from Wallet
+                                        <button onClick={() => handleDetailAdjustWallet('deduct')} disabled={isAdjustingWallet} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 px-4 rounded-lg transition-colors duration-200 disabled:bg-slate-600 flex justify-center items-center gap-2">
+                                            {isAdjustingWallet ? 'Processing...' : '✨ Deduct from Wallet'}
                                         </button>
                                     </div>
+                                    {isAdjustingWallet && <p className="text-xs text-slate-400 text-center animate-pulse">Generating AI description and processing transaction...</p>}
                                 </div>
                             </div>
                             <div className="bg-slate-800/40 p-4 rounded-lg">
@@ -997,8 +1003,8 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
                                         <p className="text-sm text-slate-400 font-roboto-mono">Request: <span className="font-bold text-red-400">${Math.abs(tx.amount).toLocaleString()}</span> on {new Date(tx.timestamp).toLocaleDateString()}</p>
                                     </div>
                                     <div className="flex gap-2 flex-shrink-0">
-                                       <button onClick={() => onUpdateWithdrawal(tx.userEmail, tx.id, 'approve')} className="bg-green-600 hover:bg-green-500 text-white font-bold py-1 px-3 rounded text-sm">Approve</button>
-                                       <button onClick={() => onUpdateWithdrawal(tx.userEmail, tx.id, 'decline')} className="bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded text-sm">Decline</button>
+                                       <button onClick={() => onUpdateWithdrawal(tx.userEmail, tx.id, 'approve', currentUser.email)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-1 px-3 rounded text-sm">Approve</button>
+                                       <button onClick={() => onUpdateWithdrawal(tx.userEmail, tx.id, 'decline', currentUser.email)} className="bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded text-sm">Decline</button>
                                     </div>
                                 </li>
                             )) : <li className="text-center text-slate-500 py-4">No pending withdrawals.</li>}

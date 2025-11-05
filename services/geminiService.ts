@@ -152,3 +152,33 @@ export const askTheAI = async (question: QuizQuestion): Promise<string> => {
         return "Sorry, I'm unable to provide a hint at this moment.";
     }
 };
+
+export const generateTransactionDescription = async (keywords: string, amount: number): Promise<string> => {
+    try {
+        const direction = amount > 0 ? "credit" : "debit";
+        const prompt = `An admin is performing a wallet adjustment for a user.
+        The amount is a ${direction} of $${Math.abs(amount)}.
+        The keywords provided by the admin for the reason are: "${keywords}".
+        
+        Based on this, generate a clear, professional, and concise transaction description for the user's transaction history.
+        The description should start with "Admin adjustment:". For example, "Admin adjustment: Bonus for winning community event." or "Admin adjustment: Correction for contest payout error."`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                temperature: 0.5,
+                maxOutputTokens: 50,
+            },
+        });
+
+        const description = response.text.trim();
+        // Basic cleanup in case the model adds quotes
+        return description.replace(/^"|"$/g, '');
+
+    } catch (error) {
+        console.error("Error generating transaction description:", error);
+        // Fallback description
+        return `Admin adjustment: ${keywords}`;
+    }
+};
