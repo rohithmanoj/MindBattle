@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { AppView, QuizQuestion, GameSettings, Contest, User, StoredUser, Transaction, TransactionType, AdminRole, GameResults, ContestResult } from './types';
 import HomeScreen from './components/HomeScreen';
@@ -161,80 +162,89 @@ const App: React.FC = () => {
     return () => clearInterval(statusUpdateInterval);
   }, [contests]);
 
-  const addTransaction = useCallback((userId: string, type: TransactionType, amount: number, description: string, status: 'completed' | 'pending' = 'completed') => {
-      const updatedUsers = users.map(u => {
-        if (u.email === userId) {
-          const newTransaction: Transaction = {
-            id: `txn_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-            type,
-            amount: ['withdrawal', 'entry_fee', 'pending_withdrawal'].includes(type) ? -Math.abs(amount) : amount,
-            description,
-            timestamp: Date.now(),
-            status,
-          };
-          
-          let newBalance = u.walletBalance;
-          // IMPORTANT: Only adjust balance for completed, non-pending transactions.
-          if (type !== 'pending_withdrawal') {
-            newBalance += newTransaction.amount;
-          }
-
-          return {
-            ...u,
-            walletBalance: newBalance,
-            transactions: [newTransaction, ...(u.transactions || [])],
-          };
+  useEffect(() => {
+    // This effect ensures that the `currentUser` state is always in sync with the canonical `users` list.
+    // This is important because other operations might update a user's details in the `users` array,
+    // and `currentUser` needs to reflect those changes (e.g., wallet balance updates).
+    if (currentUser?.email) {
+        const freshUserData = users.find(u => u.email === currentUser.email);
+        
+        // Deep comparison to prevent infinite re-render loops.
+        // Only update if the user data in the list is actually different from the current user state.
+        if (freshUserData && JSON.stringify(freshUserData) !== JSON.stringify(currentUser)) {
+            setCurrentUser(freshUserData);
         }
-        return u;
-      });
-
-      setUsers(updatedUsers);
-      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-
-      if (currentUser && currentUser.email === userId) {
-        const updatedUser = updatedUsers.find(u => u.email === userId);
-        if(updatedUser) {
-            setCurrentUser(updatedUser);
-        }
-      }
+    }
   }, [users, currentUser]);
+
+
+  const addTransaction = useCallback((userId: string, type: TransactionType, amount: number, description: string, status: 'completed' | 'pending' = 'completed') => {
+      setUsers(currentUsers => {
+        const updatedUsers = currentUsers.map(u => {
+          if (u.email === userId) {
+            const newTransaction: Transaction = {
+              id: `txn_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+              type,
+              amount: ['withdrawal', 'entry_fee', 'pending_withdrawal'].includes(type) ? -Math.abs(amount) : amount,
+              description,
+              timestamp: Date.now(),
+              status,
+            };
+            
+            let newBalance = u.walletBalance;
+            if (type !== 'pending_withdrawal') {
+              newBalance += newTransaction.amount;
+            }
+            
+            const updatedUser: StoredUser = {
+              ...u,
+              walletBalance: newBalance,
+              transactions: [newTransaction, ...(u.transactions || [])],
+            };
+  
+            return updatedUser;
+          }
+          return u;
+        });
+  
+        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+        return updatedUsers;
+      });
+  }, []);
   
   const handleAdminAdjustWallet = useCallback((userId: string, amount: number, reason: string) => {
     const adminId = currentUser?.email;
     if (!isAdmin || !adminId) return;
 
-    let adjustedUser: StoredUser | null = null;
-    const updatedUsers = users.map(u => {
-        if (u.email === userId) {
-            const newBalance = u.walletBalance + amount;
-            const adjustmentTx: Transaction = {
-                id: `txn_adj_${Date.now()}`,
-                type: 'admin_adjustment',
-                amount: amount,
-                description: `Admin adjustment: ${reason}`,
-                timestamp: Date.now(),
-                status: 'completed',
-                updatedBy: adminId,
-            };
-            adjustedUser = {
-                ...u,
-                walletBalance: newBalance,
-                transactions: [adjustmentTx, ...(u.transactions || [])],
-            };
-            return adjustedUser;
-        }
-        return u;
+    setUsers(currentUsers => {
+        const updatedUsers = currentUsers.map(u => {
+            if (u.email === userId) {
+                const newBalance = u.walletBalance + amount;
+                const adjustmentTx: Transaction = {
+                    id: `txn_adj_${Date.now()}`,
+                    type: 'admin_adjustment',
+                    amount: amount,
+                    description: `Admin adjustment: ${reason}`,
+                    timestamp: Date.now(),
+                    status: 'completed',
+                    updatedBy: adminId,
+                };
+                const adjustedUser = {
+                    ...u,
+                    walletBalance: newBalance,
+                    transactions: [adjustmentTx, ...(u.transactions || [])],
+                };
+                return adjustedUser;
+            }
+            return u;
+        });
+        
+        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+        return updatedUsers;
     });
-    setUsers(updatedUsers);
-    localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+}, [currentUser, isAdmin]);
 
-    // If the adjusted user is the current user, update their state
-    if (currentUser && currentUser.email === userId && adjustedUser) {
-        setCurrentUser(adjustedUser);
-    }
-}, [users, currentUser, isAdmin]);
-
-  const handleRegisterForContest = useCallback(async (contest: Contest) => {
+  const handleRegisterForContest = useCallback((contest: Contest) => {
     if (!currentUser) {
         setAppView('login');
         return;
@@ -266,13 +276,16 @@ const App: React.FC = () => {
     if (contest.entryFee > 0) {
         addTransaction(currentUser.email, 'entry_fee', contest.entryFee, `Entry for ${contest.title}`);
     }
-    const updatedContests = contests.map(c => 
-        c.id === contest.id ? { ...c, participants: [...c.participants, currentUser.email] } : c
-    );
-    setContests(updatedContests);
-    localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
+
+    setContests(prevContests => {
+      const updatedContests = prevContests.map(c => 
+          c.id === contest.id ? { ...c, participants: [...c.participants, currentUser.email] } : c
+      );
+      localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
+      return updatedContests;
+    });
     
-  }, [currentUser, addTransaction, contests, users]);
+  }, [currentUser, addTransaction, users]);
   
   const handleEnterContest = useCallback((contest: Contest) => {
     if (!contest.questions || contest.questions.length === 0) {
@@ -308,26 +321,26 @@ const App: React.FC = () => {
                       time: userResult.time,
                   };
               }
-              // Note: Winnings for FastestFinger format would need a different mechanism, e.g., admin distribution based on final leaderboard.
           }
           
           if (newResult) {
-              const updatedContests = contests.map(c => {
-                  if (c.id === activeContest.id) {
-                      const existingResults = c.results || [];
-                      // Update or add the current user's result, preventing duplicates
-                      const otherUserResults = existingResults.filter(r => r.userId !== currentUser.email);
-                      return { ...c, results: [...otherUserResults, newResult!] };
-                  }
-                  return c;
+              setContests(prevContests => {
+                const updatedContests = prevContests.map(c => {
+                    if (c.id === activeContest.id) {
+                        const existingResults = c.results || [];
+                        const otherUserResults = existingResults.filter(r => r.userId !== currentUser.email);
+                        return { ...c, results: [...otherUserResults, newResult!] };
+                    }
+                    return c;
+                });
+                localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
+                return updatedContests;
               });
-              setContests(updatedContests);
-              localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
           }
       }
       
       setAppView('end');
-  }, [activeContest, currentUser, addTransaction, isAdmin, contests]);
+  }, [activeContest, currentUser, addTransaction, isAdmin]);
 
   const handleRestart = useCallback(() => {
     setActiveContest(null);
@@ -390,9 +403,11 @@ const App: React.FC = () => {
             status: 'completed',
         }] 
     };
-    const updatedUsers = [...users, newUser];
-    setUsers(updatedUsers);
-    localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+    setUsers(prevUsers => {
+      const updatedUsers = [...prevUsers, newUser];
+      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+      return updatedUsers;
+    });
     setCurrentUser(newUser);
     setIsAdmin(false);
     setAppView('home');
@@ -416,45 +431,55 @@ const App: React.FC = () => {
           id: `c_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           participants: [],
       };
-      const updatedContests = [...contests, newContest];
-      setContests(updatedContests);
-      localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
-  }, [contests]);
+      setContests(prevContests => {
+        const updatedContests = [...prevContests, newContest];
+        localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
+        return updatedContests;
+      });
+  }, []);
 
   const handleUpdateContest = useCallback((updatedContest: Contest) => {
-      const updatedContests = contests.map(c => c.id === updatedContest.id ? updatedContest : c);
-      setContests(updatedContests);
-      localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
-  }, [contests]);
+      setContests(prevContests => {
+        const updatedContests = prevContests.map(c => c.id === updatedContest.id ? updatedContest : c);
+        localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
+        return updatedContests;
+      });
+  }, []);
 
   const handleDeleteContest = useCallback((contestId: string) => {
-      const updatedContests = contests.filter(c => c.id !== contestId);
-      setContests(updatedContests);
-      localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
-  }, [contests]);
+      setContests(prevContests => {
+        const updatedContests = prevContests.filter(c => c.id !== contestId);
+        localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
+        return updatedContests;
+      });
+  }, []);
 
   const handleAdminUpdateUser = useCallback((userId: string, updates: Partial<Pick<StoredUser, 'banned'>>) => {
-      const updatedUsers = users.map(u => u.email === userId ? { ...u, ...updates } : u);
-      setUsers(updatedUsers);
-      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-  }, [users]);
+      setUsers(prevUsers => {
+        const updatedUsers = prevUsers.map(u => u.email === userId ? { ...u, ...updates } : u);
+        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+        return updatedUsers;
+      });
+  }, []);
   
   const handleUpdateUserRole = useCallback((userId: string, role: AdminRole | 'None') => {
-      const updatedUsers = users.map(u => {
-          if (u.email === userId) {
-              const updatedUser = { ...u };
-              if (role === 'None') {
-                  delete updatedUser.role;
-              } else {
-                  updatedUser.role = role;
-              }
-              return updatedUser;
-          }
-          return u;
+      setUsers(prevUsers => {
+        const updatedUsers = prevUsers.map(u => {
+            if (u.email === userId) {
+                const updatedUser = { ...u };
+                if (role === 'None') {
+                    delete updatedUser.role;
+                } else {
+                    updatedUser.role = role;
+                }
+                return updatedUser;
+            }
+            return u;
+        });
+        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+        return updatedUsers;
       });
-      setUsers(updatedUsers);
-      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-  }, [users]);
+  }, []);
   
   const handleCancelContest = useCallback((contestId: string) => {
       const contestToCancel = contests.find(c => c.id === contestId);
@@ -466,11 +491,13 @@ const App: React.FC = () => {
           }
       });
       
-      const updatedContests: Contest[] = contests.map(c => 
-          c.id === contestId ? { ...c, status: 'Cancelled', participants: [] } : c
-      );
-      setContests(updatedContests);
-      localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
+      setContests(prevContests => {
+        const updatedContests: Contest[] = prevContests.map(c => 
+            c.id === contestId ? { ...c, status: 'Cancelled', participants: [] } : c
+        );
+        localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
+        return updatedContests;
+      });
   }, [contests, addTransaction]);
   
   const handleGoToWallet = useCallback(() => {
@@ -507,38 +534,38 @@ const App: React.FC = () => {
     const adminId = currentUser?.email;
     if (!isAdmin || !adminId) return;
 
-    const userIndex = users.findIndex(u => u.email === userId);
-    if (userIndex === -1) return;
+    setUsers(prevUsers => {
+      const userIndex = prevUsers.findIndex(u => u.email === userId);
+      if (userIndex === -1) return prevUsers;
 
-    const userToUpdate = { ...users[userIndex] };
-    userToUpdate.transactions = [...(userToUpdate.transactions || [])];
-    const txIndex = userToUpdate.transactions.findIndex(tx => tx.id === transactionId && tx.status === 'pending');
-    
-    if (txIndex === -1) return;
+      const userToUpdate = { ...prevUsers[userIndex] };
+      userToUpdate.transactions = [...(userToUpdate.transactions || [])];
+      const txIndex = userToUpdate.transactions.findIndex(tx => tx.id === transactionId && tx.status === 'pending');
+      
+      if (txIndex === -1) return prevUsers;
 
-    const originalTx = userToUpdate.transactions[txIndex];
+      const originalTx = userToUpdate.transactions[txIndex];
 
-    if (action === 'approve') {
-        userToUpdate.transactions[txIndex] = { 
-            ...originalTx, type: 'withdrawal', status: 'completed', 
-            description: 'Withdrawal approved by admin', updatedBy: adminId,
-        };
-        // Deduct the balance upon approval
-        userToUpdate.walletBalance += originalTx.amount;
-    } else { // Decline
-        userToUpdate.transactions[txIndex] = { 
-            ...originalTx, type: 'withdrawal_declined', status: 'declined', 
-            description: 'Withdrawal declined by admin', updatedBy: adminId,
-        };
-        // No balance change needed, as it was never deducted.
-    }
-    
-    const updatedUsers = [...users];
-    updatedUsers[userIndex] = userToUpdate;
-
-    setUsers(updatedUsers);
-    localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-  }, [users, currentUser, isAdmin]);
+      if (action === 'approve') {
+          userToUpdate.transactions[txIndex] = { 
+              ...originalTx, type: 'withdrawal', status: 'completed', 
+              description: 'Withdrawal approved by admin', updatedBy: adminId,
+          };
+          userToUpdate.walletBalance += originalTx.amount;
+      } else { // Decline
+          userToUpdate.transactions[txIndex] = { 
+              ...originalTx, type: 'withdrawal_declined', status: 'declined', 
+              description: 'Withdrawal declined by admin', updatedBy: adminId,
+          };
+      }
+      
+      const updatedUsers = [...prevUsers];
+      updatedUsers[userIndex] = userToUpdate;
+      
+      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+      return updatedUsers;
+    });
+  }, [currentUser, isAdmin]);
 
   const handleAdminCreateAdmin = useCallback((name: string, email: string, password: string, role: AdminRole): { success: boolean, message: string } => {
       if (users.some(u => u.email === email)) {
@@ -551,9 +578,11 @@ const App: React.FC = () => {
           registrationDate: Date.now(),
           transactions: []
       };
-      const updatedUsers = [...users, newAdmin];
-      setUsers(updatedUsers);
-      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+      setUsers(prevUsers => {
+        const updatedUsers = [...prevUsers, newAdmin];
+        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
+        return updatedUsers;
+      });
       return { success: true, message: 'Admin created successfully!' };
   }, [users]);
 
