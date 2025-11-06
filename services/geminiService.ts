@@ -73,6 +73,9 @@ export const generateQuiz = async (category: string, numberOfQuestions: number =
         },
     });
 
+    if (!response.text || typeof response.text !== 'string') {
+        throw new Error("AI response was empty or invalid. Could not generate quiz.");
+    }
     const jsonText = response.text.trim();
     const parsed = JSON.parse(jsonText);
     
@@ -111,6 +114,9 @@ export const generateContestWithAI = async (topic: string, ageGroup: string, dif
             },
         });
 
+        if (!response.text || typeof response.text !== 'string') {
+            throw new Error("AI response was empty or invalid. Could not generate contest.");
+        }
         const jsonText = response.text.trim();
         const parsed = JSON.parse(jsonText);
 
@@ -146,6 +152,9 @@ export const askTheAI = async (question: QuizQuestion): Promise<string> => {
             contents: prompt,
         });
 
+        if (!response.text || typeof response.text !== 'string') {
+            return "Sorry, I'm unable to provide a hint at this moment.";
+        }
         return response.text;
     } catch (error) {
         console.error("Error asking the AI:", error);
@@ -172,6 +181,10 @@ export const generateTransactionDescription = async (keywords: string, amount: n
             },
         });
 
+        if (!response.text || typeof response.text !== 'string') {
+            console.error("Error generating transaction description: AI response was empty or invalid.");
+            return `Admin adjustment: ${keywords}`;
+        }
         const description = response.text.trim();
         // Basic cleanup in case the model adds quotes
         return description.replace(/^"|"$/g, '');

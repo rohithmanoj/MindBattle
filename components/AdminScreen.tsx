@@ -1,8 +1,9 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
-import { GameSettings, StoredUser, Transaction, Contest, QuizQuestion, AdminRole, AdminPermission, User, Toast } from '../types';
+import { GameSettings, StoredUser, Transaction, Contest, QuizQuestion, AdminRole, AdminPermission, User, Toast, AuditLog, AuditLogAction } from '../types';
 import { generateContestWithAI } from '../services/geminiService';
-import { SearchIcon, DollarSignIcon, UsersIcon, TrendingUpIcon, DashboardIcon, ContestsIcon, AdminUsersIcon, FinanceIcon, AdminManagementIcon, GlobalSettingsIcon, CheckCircleIcon, XCircleIcon, InfoIcon } from './icons';
+import { SearchIcon, DollarSignIcon, UsersIcon, TrendingUpIcon, DashboardIcon, ContestsIcon, AdminUsersIcon, FinanceIcon, AdminManagementIcon, GlobalSettingsIcon, AuditLogIcon, CheckCircleIcon, XCircleIcon, InfoIcon } from './icons';
 
 // --- Helper Components ---
 
@@ -79,7 +80,7 @@ const TimeSelector: React.FC<{
 };
 
 
-type MainTabs = 'dashboard' | 'contests' | 'users' | 'finance' | 'admins' | 'settings';
+type MainTabs = 'dashboard' | 'contests' | 'users' | 'finance' | 'admins' | 'settings' | 'audit_log';
 
 interface TabButtonProps {
     tabName: MainTabs;
@@ -95,7 +96,7 @@ const TabButton: React.FC<TabButtonProps> = ({ tabName, label, activeTab, setAct
 );
 
 const ROLES_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
-  'Super Admin': ['MANAGE_CONTESTS', 'MANAGE_FINANCE', 'MANAGE_USERS', 'MANAGE_SETTINGS', 'MANAGE_ADMINS'],
+  'Super Admin': ['MANAGE_CONTESTS', 'MANAGE_FINANCE', 'MANAGE_USERS', 'MANAGE_SETTINGS', 'MANAGE_ADMINS', 'MANAGE_AUDIT_LOG'],
   'Contest Manager': ['MANAGE_CONTESTS'],
   'Finance Manager': ['MANAGE_FINANCE'],
   'User Manager': ['MANAGE_USERS'],
@@ -320,6 +321,7 @@ interface AdminScreenProps {
   users: StoredUser[];
   contests: Contest[];
   currentUser: User;
+  auditLog: AuditLog[];
   onSaveSettings: (newSettings: GameSettings) => void;
   onCancel: () => void;
   onUpdateWithdrawal: (userId: string, transactionId: string, action: 'approve' | 'decline', adminId: string) => void;
@@ -337,7 +339,7 @@ type AdminView = 'main' | 'edit_contest' | 'verify_questions';
 
 const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   const { 
-    initialSettings, users, contests, currentUser,
+    initialSettings, users, contests, currentUser, auditLog,
     onSaveSettings, onCancel, onUpdateWithdrawal, 
     onCreateContest, onUpdateContest, onDeleteContest,
     onAdminUpdateUser, onUpdateUserRole, onCancelContest, onAdjustWallet,
@@ -384,6 +386,9 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   const [detailAdjustment, setDetailAdjustment] = useState({ amount: '', reasonKeywords: '' });
   const [isAdjustingWallet, setIsAdjustingWallet] = useState(false);
   const [txSearch, setTxSearch] = useState('');
+  
+  // State for Audit Log
+  const [auditLogSearch, setAuditLogSearch] = useState('');
   
 
   // Reset detail view state when switching users to prevent stale data.
@@ -803,6 +808,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   );
   const filteredUsers = users.filter(u => !u.role && (userSearchTerm === '' || u.name.toLowerCase().includes(userSearchTerm.toLowerCase()) || u.email.toLowerCase().includes(userSearchTerm.toLowerCase())) && (userStatusFilter === 'all' || (userStatusFilter === 'banned' && u.banned) || (userStatusFilter === 'active' && !u.banned)));
   const admins = users.filter(u => u.role);
+  const filteredAuditLog = auditLog.filter(log => auditLogSearch === '' || log.adminEmail.toLowerCase().includes(auditLogSearch.toLowerCase()) || log.adminName.toLowerCase().includes(auditLogSearch.toLowerCase()) || log.action.toLowerCase().includes(auditLogSearch.toLowerCase()) || log.details.toLowerCase().includes(auditLogSearch.toLowerCase()));
   
   return (
     <div className="flex flex-col h-full text-white p-4 sm:p-8 bg-slate-900/50 backdrop-blur-sm rounded-lg relative">
@@ -811,7 +817,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
          {view !== 'main' && <button onClick={() => setView('main')} className="bg-slate-600 font-bold py-2 px-4 rounded-lg">&larr; Back to Main</button>}
       </div>
       
-      {view === 'main' && <div className="flex flex-col flex-grow overflow-y-hidden"><div className="flex border-b border-slate-700 mb-6 flex-shrink-0">{hasPermission('MANAGE_CONTESTS') && <TabButton tabName="dashboard" label="Dashboard" activeTab={activeTab} setActiveTab={setActiveTab} icon={<DashboardIcon />} />}<TabButton tabName="contests" label="Contests" activeTab={activeTab} setActiveTab={setActiveTab} icon={<ContestsIcon />} />{hasPermission('MANAGE_USERS') && <TabButton tabName="users" label="Users" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminUsersIcon />} />}{hasPermission('MANAGE_FINANCE') && <TabButton tabName="finance" label="Finance" activeTab={activeTab} setActiveTab={setActiveTab} icon={<FinanceIcon />} />}{hasPermission('MANAGE_ADMINS') && <TabButton tabName="admins" label="Admins" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminManagementIcon />} />}{hasPermission('MANAGE_SETTINGS') && <TabButton tabName="settings" label="Global Settings" activeTab={activeTab} setActiveTab={setActiveTab} icon={<GlobalSettingsIcon />} />}</div><div className="flex-grow overflow-y-auto pr-2">
+      {view === 'main' && <div className="flex flex-col flex-grow overflow-y-hidden"><div className="flex border-b border-slate-700 mb-6 flex-shrink-0 overflow-x-auto">{hasPermission('MANAGE_CONTESTS') && <TabButton tabName="dashboard" label="Dashboard" activeTab={activeTab} setActiveTab={setActiveTab} icon={<DashboardIcon />} />}<TabButton tabName="contests" label="Contests" activeTab={activeTab} setActiveTab={setActiveTab} icon={<ContestsIcon />} />{hasPermission('MANAGE_USERS') && <TabButton tabName="users" label="Users" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminUsersIcon />} />}{hasPermission('MANAGE_FINANCE') && <TabButton tabName="finance" label="Finance" activeTab={activeTab} setActiveTab={setActiveTab} icon={<FinanceIcon />} />}{hasPermission('MANAGE_ADMINS') && <TabButton tabName="admins" label="Admins" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminManagementIcon />} />}{hasPermission('MANAGE_AUDIT_LOG') && <TabButton tabName="audit_log" label="Audit Log" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AuditLogIcon />} />}{hasPermission('MANAGE_SETTINGS') && <TabButton tabName="settings" label="Global Settings" activeTab={activeTab} setActiveTab={setActiveTab} icon={<GlobalSettingsIcon />} />}</div><div className="flex-grow overflow-y-auto pr-2">
         {activeTab === 'dashboard' && hasPermission('MANAGE_CONTESTS') && (
             <div className="space-y-6">
                 <div className="mb-6 border-b-2 border-slate-700 pb-2">
@@ -1103,6 +1109,43 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
                         </Select>
                     </div>
                 )}
+            </div>
+        )}
+        {activeTab === 'audit_log' && hasPermission('MANAGE_AUDIT_LOG') && (
+            <div className="space-y-6">
+                 <div className="flex justify-between items-center mb-4 border-b-2 border-slate-700 pb-2">
+                    <h2 className="text-2xl font-semibold text-slate-200">Admin Audit Log</h2>
+                </div>
+                <div className="relative mb-4">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none"><SearchIcon/></span>
+                    <input type="text" placeholder="Search by admin, action, or details..." value={auditLogSearch} onChange={e => setAuditLogSearch(e.target.value)} className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg py-2 pl-10 pr-3 text-white"/>
+                </div>
+                <div className="overflow-x-auto max-h-[calc(100vh-450px)]">
+                    <table className="w-full text-sm text-left text-slate-300">
+                        <thead className="text-xs text-slate-400 uppercase bg-slate-800/80 sticky top-0">
+                            <tr>
+                                <th className="px-4 py-2">Timestamp</th>
+                                <th className="px-4 py-2">Admin</th>
+                                <th className="px-4 py-2">Action</th>
+                                <th className="px-4 py-2">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-700">
+                            {filteredAuditLog.length > 0 ? filteredAuditLog.map(log => (
+                                <tr key={log.id} className="hover:bg-slate-700/50">
+                                    <td className="px-4 py-2 text-xs font-roboto-mono whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{log.adminName} <span className="text-xs text-slate-500">({log.adminEmail})</span></td>
+                                    <td className="px-4 py-2"><span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-500/30 text-indigo-200">{log.action.replace(/_/g, ' ')}</span></td>
+                                    <td className="px-4 py-2">{log.details}</td>
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan={4} className="text-center text-slate-500 py-8">No audit log entries found.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         )}
         {activeTab === 'settings' && hasPermission('MANAGE_SETTINGS') && (

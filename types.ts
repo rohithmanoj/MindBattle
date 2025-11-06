@@ -1,4 +1,5 @@
 
+
 export type AppView = 'home' | 'login' | 'register' | 'loading' | 'playing' | 'end' | 'admin' | 'wallet' | 'payment' | 'admin-login' | 'waiting_room' | 'create_contest' | 'leaderboard';
 
 export interface QuizQuestion {
@@ -73,7 +74,7 @@ export interface Transaction {
   updatedBy?: string; // email of admin who made the change
 }
 
-export type AdminPermission = 'MANAGE_CONTESTS' | 'MANAGE_FINANCE' | 'MANAGE_USERS' | 'MANAGE_SETTINGS' | 'MANAGE_ADMINS';
+export type AdminPermission = 'MANAGE_CONTESTS' | 'MANAGE_FINANCE' | 'MANAGE_USERS' | 'MANAGE_SETTINGS' | 'MANAGE_ADMINS' | 'MANAGE_AUDIT_LOG';
 export type AdminRole = 'Super Admin' | 'Contest Manager' | 'Finance Manager' | 'User Manager';
 
 export interface User {
@@ -108,4 +109,30 @@ export interface WalletAction {
         status?: 'completed' | 'pending' | 'declined';
         updatedBy?: string; // Admin email
     };
+}
+
+// --- New Types for Admin Audit Log ---
+export type AuditLogAction =
+  | 'SETTINGS_UPDATE'
+  | 'WITHDRAWAL_APPROVED'
+  | 'WITHDRAWAL_DECLINED'
+  | 'CONTEST_CREATED'
+  | 'CONTEST_UPDATED'
+  | 'CONTEST_DELETED'
+  | 'CONTEST_CANCELLED'
+  | 'CONTEST_APPROVED'
+  | 'CONTEST_REJECTED'
+  | 'USER_BANNED'
+  | 'USER_UNBANNED'
+  | 'ROLE_UPDATED'
+  | 'WALLET_ADJUSTED'
+  | 'ADMIN_CREATED';
+
+export interface AuditLog {
+  id: string;
+  timestamp: number;
+  adminEmail: string;
+  adminName: string;
+  action: AuditLogAction;
+  details: string; // e.g., "User: john@doe.com", "Contest: 'Summer Gala' (c123)"
 }
