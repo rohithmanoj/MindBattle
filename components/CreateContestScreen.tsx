@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Contest, GameSettings, QuizQuestion, User } from '../types';
+import { Contest, GameSettings, QuizQuestion, User, Difficulty } from '../types';
+import { DIFFICULTY_LEVELS } from '../constants';
 
 interface CreateContestScreenProps {
     currentUser: User;
@@ -76,7 +77,7 @@ const CreateContestScreen: React.FC<CreateContestScreenProps> = ({ currentUser, 
         contestStartDate: regEndDate + (60 * 60 * 1000),
         maxParticipants: 100, rules: 'Standard quiz rules apply.',
         format: 'KBC', timerType: 'per_question', timePerQuestion: initialSettings.timePerQuestion,
-        totalContestTime: 60, numberOfQuestions: 15,
+        totalContestTime: 60, numberOfQuestions: 15, difficulty: 'Medium',
     });
     const [questionsJson, setQuestionsJson] = useState('');
     const [error, setError] = useState<string | null>(null);
@@ -116,6 +117,7 @@ const CreateContestScreen: React.FC<CreateContestScreenProps> = ({ currentUser, 
                 totalContestTime: contest.totalContestTime,
                 numberOfQuestions: contest.numberOfQuestions || 15,
                 createdBy: currentUser.email,
+                difficulty: contest.difficulty || 'Medium',
             };
 
             if (!contestData.title) throw new Error("Contest title is required.");
@@ -169,9 +171,12 @@ const CreateContestScreen: React.FC<CreateContestScreenProps> = ({ currentUser, 
             <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                 <Input label="Contest Title" id="title" type="text" value={contest.title || ''} onChange={e => setContest({...contest, title: e.target.value})} />
                 <Textarea label="Description" id="description" value={contest.description || ''} onChange={e => setContest({...contest, description: e.target.value})} rows={2} />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <Select label="Category" id="category" value={contest.category} onChange={e => setContest({...contest, category: e.target.value})}>
                         {initialSettings.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </Select>
+                     <Select label="Difficulty" id="difficulty" value={contest.difficulty} onChange={e => setContest({...contest, difficulty: e.target.value as Difficulty})}>
+                        {DIFFICULTY_LEVELS.map(d => <option key={d} value={d}>{d}</option>)}
                     </Select>
                     <Select label="Format" id="format" value={contest.format} onChange={e => {
                         const newFormat = e.target.value as 'KBC' | 'FastestFinger';

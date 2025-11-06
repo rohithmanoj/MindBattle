@@ -1,7 +1,8 @@
 
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { QuizQuestion, Contest } from '../types';
+import { QuizQuestion, Contest, StoredUser, User } from '../types';
+import { getRank } from './rankingService';
 
 if (!process.env.API_KEY) {
   throw new Error("API_KEY environment variable not set");
@@ -178,6 +179,7 @@ export const generateTransactionDescription = async (keywords: string, amount: n
             config: {
                 temperature: 0.5,
                 maxOutputTokens: 50,
+                thinkingConfig: { thinkingBudget: 25 },
             },
         });
 
@@ -194,4 +196,63 @@ export const generateTransactionDescription = async (keywords: string, amount: n
         // Fallback description
         return `Admin adjustment: ${keywords}`;
     }
+};
+
+export const generateAdminInsights = async (prompt: string, users: StoredUser[], contests: Contest[]): Promise<string> => {
+  try {
+    const getMostFrequent = (arr: string[]) => {
+      if (arr.length === 0) return 'N/A';
+      const frequencyMap = arr.reduce((acc, item) => {
+        acc[item] = (acc[item] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      return Object.keys(frequencyMap).reduce((a, b) => frequencyMap[a] > frequencyMap[b] ? a : b);
+    };
+
+    const analyticsData = {
+      users: users.filter(u => !u.role).map(u => ({
+        name: u.name,
+        totalPoints: u.totalPoints,
+        rank: getRank(u.totalPoints),
+        contestsPlayed: u.contestHistory.length,
+        winRate: u.contestHistory.length > 0
+          ? (u.contestHistory.filter(h => h.pointsEarned > 0).length / u.contestHistory.length) * 100
+          : 0,
+        mostPlayedDifficulty: getMostFrequent(u.contestHistory.map(h => h.difficulty)),
+      })),
+      contests: contests.map(c => ({
+        title: c.title,
+        category: c.category,
+        difficulty: c.difficulty,
+        participants: c.participants.length,
+        status: c.status,
+      })),
+    };
+
+    const fullPrompt = `You are an expert data analyst for a quiz platform called MindBattle.
+    Analyze the following JSON data which contains user stats and contest information.
+    The "rank" is a tier based on totalPoints. "winRate" is the percentage of contests where a user earned positive points.
+    
+    Data:
+    ${JSON.stringify(analyticsData, null, 2)}
+
+    Based on the data, please answer the following request from the admin. Provide a concise, insightful response formatted in Markdown with headings, lists, and bold text for clarity.
+    
+    Admin's Request: "${prompt}"
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: fullPrompt,
+    });
+
+    if (!response.text || typeof response.text !== 'string') {
+        return "Sorry, the AI could not generate insights at this moment.";
+    }
+    return response.text;
+
+  } catch (error) {
+    console.error("Error generating admin insights:", error);
+    return "An error occurred while communicating with the AI. Please check the data and try again.";
+  }
 };

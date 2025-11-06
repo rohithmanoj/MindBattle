@@ -33,6 +33,8 @@ export interface ContestResult {
   time?: number; // for FF
 }
 
+export type Difficulty = 'Easy' | 'Medium' | 'Hard' | 'Difficult';
+
 export interface Contest {
   id: string;
   title: string;
@@ -55,6 +57,7 @@ export interface Contest {
   numberOfQuestions: number;
   createdBy?: string; // email of the user who created it
   results?: ContestResult[];
+  difficulty: Difficulty;
 }
 
 export type GameResults =
@@ -77,6 +80,18 @@ export interface Transaction {
 export type AdminPermission = 'MANAGE_CONTESTS' | 'MANAGE_FINANCE' | 'MANAGE_USERS' | 'MANAGE_SETTINGS' | 'MANAGE_ADMINS' | 'MANAGE_AUDIT_LOG';
 export type AdminRole = 'Super Admin' | 'Contest Manager' | 'Finance Manager' | 'User Manager';
 
+export type Rank = 'Bronze Beginner' | 'Silver Learner' | 'Gold Challenger' | 'Platinum Genius' | 'Titanium Genius';
+
+export interface UserContestHistory {
+  contestId: string;
+  contestTitle: string;
+  difficulty: Difficulty;
+  category: string;
+  result: number;
+  pointsEarned: number;
+  timestamp: number;
+}
+
 export interface User {
   name: string;
   email: string;
@@ -84,6 +99,8 @@ export interface User {
   transactions: Transaction[];
   role?: AdminRole;
   registrationDate: number;
+  totalPoints: number;
+  contestHistory: UserContestHistory[];
 }
 
 export interface StoredUser extends User {

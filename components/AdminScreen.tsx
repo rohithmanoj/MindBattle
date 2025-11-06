@@ -1,9 +1,12 @@
 
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { GameSettings, StoredUser, Transaction, Contest, QuizQuestion, AdminRole, AdminPermission, User, Toast, AuditLog, AuditLogAction } from '../types';
+import { GameSettings, StoredUser, Transaction, Contest, QuizQuestion, AdminRole, AdminPermission, User, Toast, AuditLog, AuditLogAction, Difficulty } from '../types';
 import { generateContestWithAI } from '../services/geminiService';
-import { SearchIcon, DollarSignIcon, UsersIcon, TrendingUpIcon, DashboardIcon, ContestsIcon, AdminUsersIcon, FinanceIcon, AdminManagementIcon, GlobalSettingsIcon, AuditLogIcon, CheckCircleIcon, XCircleIcon, InfoIcon } from './icons';
+import { SearchIcon, DollarSignIcon, UsersIcon, TrendingUpIcon, DashboardIcon, ContestsIcon, AdminUsersIcon, AdminManagementIcon, GlobalSettingsIcon, AuditLogIcon, CheckCircleIcon, XCircleIcon, InfoIcon } from './icons';
+import { DIFFICULTY_LEVELS } from '../constants';
+import AnalyticsDashboard from './AnalyticsDashboard';
+
 
 // --- Helper Components ---
 
@@ -80,7 +83,7 @@ const TimeSelector: React.FC<{
 };
 
 
-type MainTabs = 'dashboard' | 'contests' | 'users' | 'finance' | 'admins' | 'settings' | 'audit_log';
+type MainTabs = 'dashboard' | 'contests' | 'users' | 'finance' | 'admins' | 'settings' | 'audit_log' | 'analytics';
 
 interface TabButtonProps {
     tabName: MainTabs;
@@ -508,7 +511,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
         maxParticipants: 100, rules: 'Standard quiz rules apply.',
         questions: [], participants: [], 
         format: 'KBC', timerType: 'per_question', timePerQuestion: initialSettings.timePerQuestion,
-        totalContestTime: 60, numberOfQuestions: 15,
+        totalContestTime: 60, numberOfQuestions: 15, difficulty: 'Medium',
     });
     setManualQuestionsJson('');
     setGeneratedQuestions([]);
@@ -565,6 +568,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
             totalContestTime: Number(currentContest.totalContestTime) || undefined,
             numberOfQuestions: Number(currentContest.numberOfQuestions) || 15,
             createdBy: currentContest.createdBy || currentUser.email,
+            difficulty: currentContest.difficulty || 'Medium',
         };
 
         if (!contestData.title) throw new Error("Contest title is required.");
@@ -591,6 +595,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
             status: 'Upcoming', 
             questions: generatedQuestions,
             createdBy: currentContest.createdBy || currentUser.email,
+            difficulty: currentContest.difficulty || 'Medium',
        };
        if (currentContest.id) {
           onUpdateContest({ ...finalContestData, id: currentContest.id, participants: currentContest.participants || [] });
@@ -646,9 +651,12 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
       <div className="flex-grow overflow-y-auto pr-2 space-y-4">
           <Input label="Contest Title" id="title" type="text" value={currentContest?.title || ''} onChange={e => setCurrentContest({...currentContest, title: e.target.value})} />
           <Textarea label="Description" id="description" value={currentContest?.description || ''} onChange={e => setCurrentContest({...currentContest, description: e.target.value})} rows={2} />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Select label="Category" id="category" value={currentContest?.category} onChange={e => setCurrentContest({...currentContest, category: e.target.value})}>
                 {initialSettings.categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </Select>
+            <Select label="Difficulty" id="difficulty" value={currentContest?.difficulty} onChange={e => setCurrentContest({...currentContest, difficulty: e.target.value as Difficulty})}>
+                {DIFFICULTY_LEVELS.map(d => <option key={d} value={d}>{d}</option>)}
             </Select>
             <Select label="Format" id="format" value={currentContest?.format} onChange={e => {
                 const newFormat = e.target.value as 'KBC' | 'FastestFinger';
@@ -817,7 +825,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
          {view !== 'main' && <button onClick={() => setView('main')} className="bg-slate-600 font-bold py-2 px-4 rounded-lg">&larr; Back to Main</button>}
       </div>
       
-      {view === 'main' && <div className="flex flex-col flex-grow overflow-y-hidden"><div className="flex border-b border-slate-700 mb-6 flex-shrink-0 overflow-x-auto">{hasPermission('MANAGE_CONTESTS') && <TabButton tabName="dashboard" label="Dashboard" activeTab={activeTab} setActiveTab={setActiveTab} icon={<DashboardIcon />} />}<TabButton tabName="contests" label="Contests" activeTab={activeTab} setActiveTab={setActiveTab} icon={<ContestsIcon />} />{hasPermission('MANAGE_USERS') && <TabButton tabName="users" label="Users" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminUsersIcon />} />}{hasPermission('MANAGE_FINANCE') && <TabButton tabName="finance" label="Finance" activeTab={activeTab} setActiveTab={setActiveTab} icon={<FinanceIcon />} />}{hasPermission('MANAGE_ADMINS') && <TabButton tabName="admins" label="Admins" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminManagementIcon />} />}{hasPermission('MANAGE_AUDIT_LOG') && <TabButton tabName="audit_log" label="Audit Log" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AuditLogIcon />} />}{hasPermission('MANAGE_SETTINGS') && <TabButton tabName="settings" label="Global Settings" activeTab={activeTab} setActiveTab={setActiveTab} icon={<GlobalSettingsIcon />} />}</div><div className="flex-grow overflow-y-auto pr-2">
+      {view === 'main' && <div className="flex flex-col flex-grow overflow-y-hidden"><div className="flex border-b border-slate-700 mb-6 flex-shrink-0 overflow-x-auto">{hasPermission('MANAGE_CONTESTS') && <TabButton tabName="dashboard" label="Dashboard" activeTab={activeTab} setActiveTab={setActiveTab} icon={<DashboardIcon />} />}<TabButton tabName="contests" label="Contests" activeTab={activeTab} setActiveTab={setActiveTab} icon={<ContestsIcon />} />{hasPermission('MANAGE_USERS') && <TabButton tabName="users" label="Users" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminUsersIcon />} />}{hasPermission('MANAGE_FINANCE') && <TabButton tabName="finance" label="Finance" activeTab={activeTab} setActiveTab={setActiveTab} icon={<DollarSignIcon />} />}{hasPermission('MANAGE_ADMINS') && <TabButton tabName="admins" label="Admins" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AdminManagementIcon />} />}{hasPermission('MANAGE_AUDIT_LOG') && <TabButton tabName="analytics" label="Analytics" activeTab={activeTab} setActiveTab={setActiveTab} icon={<TrendingUpIcon />} />}{hasPermission('MANAGE_AUDIT_LOG') && <TabButton tabName="audit_log" label="Audit Log" activeTab={activeTab} setActiveTab={setActiveTab} icon={<AuditLogIcon />} />}{hasPermission('MANAGE_SETTINGS') && <TabButton tabName="settings" label="Global Settings" activeTab={activeTab} setActiveTab={setActiveTab} icon={<GlobalSettingsIcon />} />}</div><div className="flex-grow overflow-y-auto pr-2">
         {activeTab === 'dashboard' && hasPermission('MANAGE_CONTESTS') && (
             <div className="space-y-6">
                 <div className="mb-6 border-b-2 border-slate-700 pb-2">
@@ -1110,6 +1118,9 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
                     </div>
                 )}
             </div>
+        )}
+        {activeTab === 'analytics' && hasPermission('MANAGE_AUDIT_LOG') && (
+            <AnalyticsDashboard users={users} contests={contests} />
         )}
         {activeTab === 'audit_log' && hasPermission('MANAGE_AUDIT_LOG') && (
             <div className="space-y-6">

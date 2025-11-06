@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Contest, User } from '../types';
+import { Contest, User, Difficulty } from '../types';
 
 interface ContestCardProps {
   contest: Contest;
@@ -10,8 +10,15 @@ interface ContestCardProps {
   isMyContestView?: boolean;
 }
 
+const DIFFICULTY_COLORS: Record<Difficulty, string> = {
+    Easy: 'bg-green-500/20 text-green-300',
+    Medium: 'bg-blue-500/20 text-blue-300',
+    Hard: 'bg-yellow-500/20 text-yellow-300',
+    Difficult: 'bg-red-500/20 text-red-300',
+}
+
 const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterContest, onViewLeaderboard, currentUser, isMyContestView = false }) => {
-  const { title, description, entryFee, prizePool, category, registrationStartDate, registrationEndDate, contestStartDate, maxParticipants, participants, status } = contest;
+  const { title, description, entryFee, prizePool, category, registrationStartDate, registrationEndDate, contestStartDate, maxParticipants, participants, status, difficulty } = contest;
 
   const now = Date.now();
   const isRegistered = currentUser ? participants.includes(currentUser.email) : false;
@@ -36,7 +43,6 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
 
   const getButtonProps = () => {
     if (isMyContestView) {
-        // In "My Contests" view, the button area is used for status display
         return { text: '', disabled: true, action: () => {} };
     }
 
@@ -70,7 +76,7 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
 
   const getStatusChip = () => {
     const chipClasses = "text-xs font-semibold px-2.5 py-0.5 rounded-full";
-    if(isMyContestView) return null; // Status is shown in the button area for this view
+    if(isMyContestView) return null;
 
     switch(status) {
         case 'Cancelled': return <span className={`bg-gray-500/20 text-gray-300 ${chipClasses}`}>Cancelled</span>;
@@ -115,14 +121,14 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
       </div>
       <p className="text-slate-400 text-sm mb-2 flex-grow">{description}</p>
       
-      <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 font-semibold mb-4">
-          <span>Registration: {formatDate(registrationStartDate)} - {formatDate(registrationEndDate)}</span>
+      <div className="flex justify-between items-center text-xs text-slate-500 font-semibold mb-4">
+          <span>Reg: {formatDate(registrationStartDate)} - {formatDate(registrationEndDate)}</span>
           <span className="text-right font-bold text-slate-300">Starts: {formatDateTime(contestStartDate)}</span>
       </div>
 
-      <div className="border-t border-slate-700 my-4"></div>
+       <div className="border-t border-slate-700 my-4"></div>
 
-      <div className="grid grid-cols-3 gap-2 text-sm mb-6 font-semibold">
+      <div className="grid grid-cols-4 gap-2 text-sm mb-6 font-semibold">
         <div className="flex flex-col text-center">
             <span className="text-slate-400 uppercase tracking-wider text-xs">Entry Fee</span>
             <span className={`text-lg font-bold ${entryFee > 0 ? 'text-white' : 'text-green-400'}`}>
@@ -136,6 +142,10 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
         <div className="flex flex-col text-center">
             <span className="text-slate-400 uppercase tracking-wider text-xs">Prize Pool</span>
             <span className="text-lg font-bold text-amber-300">${prizePool.toLocaleString()}</span>
+        </div>
+        <div className="flex flex-col text-center">
+             <span className="text-slate-400 uppercase tracking-wider text-xs">Difficulty</span>
+            <span className={`text-lg font-bold ${DIFFICULTY_COLORS[difficulty]}`}>{difficulty}</span>
         </div>
       </div>
       

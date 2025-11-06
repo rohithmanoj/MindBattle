@@ -20,6 +20,7 @@ export const MOCK_CONTESTS: Contest[] = [
     timerType: 'per_question',
     timePerQuestion: 30,
     numberOfQuestions: 15,
+    difficulty: 'Easy',
   },
   {
     id: 'c2',
@@ -40,6 +41,7 @@ export const MOCK_CONTESTS: Contest[] = [
     timerType: 'per_question',
     timePerQuestion: 45,
     numberOfQuestions: 15,
+    difficulty: 'Medium',
   },
   {
     id: 'c3',
@@ -60,6 +62,7 @@ export const MOCK_CONTESTS: Contest[] = [
     timerType: 'per_question',
     timePerQuestion: 35,
     numberOfQuestions: 15,
+    difficulty: 'Hard',
   },
   {
     id: 'c4',
@@ -80,6 +83,7 @@ export const MOCK_CONTESTS: Contest[] = [
     timerType: 'per_question',
     timePerQuestion: 25,
     numberOfQuestions: 15,
+    difficulty: 'Medium',
   },
     {
     id: 'c5',
@@ -100,6 +104,7 @@ export const MOCK_CONTESTS: Contest[] = [
     timerType: 'per_question',
     timePerQuestion: 30,
     numberOfQuestions: 15,
+    difficulty: 'Medium',
   },
   {
     id: 'c6',
@@ -120,5 +125,6 @@ export const MOCK_CONTESTS: Contest[] = [
     timerType: 'per_question',
     timePerQuestion: 60,
     numberOfQuestions: 15,
+    difficulty: 'Difficult',
   },
 ];

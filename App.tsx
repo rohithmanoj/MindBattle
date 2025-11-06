@@ -19,6 +19,7 @@ import { DEFAULT_CATEGORIES, DEFAULT_PRIZE_AMOUNTS, DEFAULT_PAYMENT_GATEWAY_SETT
 import { MOCK_CONTESTS } from './data';
 import { processWalletAction } from './services/walletService';
 import { generateTransactionDescription } from './services/geminiService';
+import { updateUserStatsAfterContest } from './services/rankingService';
 
 
 const App: React.FC = () => {
@@ -33,7 +34,7 @@ const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [depositInProgress, setDepositInProgress] = useState<{ amount: number } | null>(null);
   
-  const [contests, setContests] = useState<Contest[]>(MOCK_CONTESTS);
+  const [contests, setContests] = useState<Contest[]>([]);
   const [auditLog, setAuditLog] = useState<AuditLog[]>([]);
 
   const [gameSettings, setGameSettings] = useState<GameSettings>({
@@ -47,14 +48,27 @@ const App: React.FC = () => {
     try {
       // User data migration
       const storedUsers = localStorage.getItem('mindbattle_users');
-      let loadedUsers = storedUsers ? JSON.parse(storedUsers) : [];
+      let loadedUsers: StoredUser[] = storedUsers ? JSON.parse(storedUsers) : [];
       let userMigrationNeeded = false;
       const migratedUsers = loadedUsers.map(u => {
+          const newUser = {...u};
+          let userChanged = false;
           if (!u.registrationDate) {
-              userMigrationNeeded = true;
-              return { ...u, registrationDate: new Date('2024-01-01').getTime() };
+              userChanged = true;
+              newUser.registrationDate = new Date('2024-01-01').getTime();
           }
-          return u;
+          if (typeof u.totalPoints === 'undefined') {
+              userChanged = true;
+              newUser.totalPoints = 0;
+          }
+          if (!u.contestHistory) {
+              userChanged = true;
+              newUser.contestHistory = [];
+          }
+          if (userChanged) {
+            userMigrationNeeded = true;
+          }
+          return newUser;
       });
       const adminExists = migratedUsers.some(u => u.email === ADMIN_EMAIL);
       if (!adminExists) {
@@ -62,7 +76,7 @@ const App: React.FC = () => {
         migratedUsers.push({
             name: 'Super Admin', email: ADMIN_EMAIL, password: ADMIN_PASSWORD,
             walletBalance: 0, transactions: [], banned: false, role: 'Super Admin',
-            registrationDate: Date.now(),
+            registrationDate: Date.now(), totalPoints: 0, contestHistory: []
         });
       }
       if (userMigrationNeeded) {
@@ -76,7 +90,7 @@ const App: React.FC = () => {
 
       // Contest data migration
       const storedContests = localStorage.getItem('mindbattle_contests');
-      let loadedContests = storedContests ? JSON.parse(storedContests) : MOCK_CONTESTS;
+      let loadedContests: Contest[] = storedContests ? JSON.parse(storedContests) : MOCK_CONTESTS;
       let contestMigrationNeeded = false;
       const migratedContests = loadedContests.map(c => {
           const newContest = {...c};
@@ -95,6 +109,10 @@ const App: React.FC = () => {
               newContest.numberOfQuestions = 15;
               hasChanged = true;
           }
+           if (!newContest.difficulty) {
+              newContest.difficulty = 'Medium';
+              hasChanged = true;
+          }
 
           if(hasChanged) {
             contestMigrationNeeded = true;
@@ -102,7 +120,7 @@ const App: React.FC = () => {
           return newContest;
       });
 
-      if (contestMigrationNeeded) {
+      if (!storedContests || contestMigrationNeeded) {
           localStorage.setItem('mindbattle_contests', JSON.stringify(migratedContests));
       }
       setContests(migratedContests);
@@ -308,8 +326,8 @@ const App: React.FC = () => {
       setGameResults(results);
 
       if (activeContest && currentUser && !isAdmin) {
+          // --- Prize Money Logic ---
           let newResult: ContestResult | null = null;
-
           if (results.format === 'KBC') {
               if (results.score > 0) {
                   dispatchWalletAction({
@@ -321,23 +339,13 @@ const App: React.FC = () => {
                       }
                   });
               }
-              newResult = {
-                  userId: currentUser.email,
-                  name: currentUser.name,
-                  score: results.score,
-              };
+              newResult = { userId: currentUser.email, name: currentUser.name, score: results.score };
           } else if (results.format === 'FastestFinger') {
               const userResult = results.leaderboard.find(p => p.name === 'You');
               if (userResult) {
-                  newResult = {
-                      userId: currentUser.email,
-                      name: currentUser.name,
-                      score: userResult.score,
-                      time: userResult.time,
-                  };
+                  newResult = { userId: currentUser.email, name: currentUser.name, score: userResult.score, time: userResult.time };
               }
           }
-          
           if (newResult) {
               setContests(prevContests => {
                 const updatedContests = prevContests.map(c => {
@@ -352,10 +360,22 @@ const App: React.FC = () => {
                 return updatedContests;
               });
           }
+          
+          // --- NEW RANKING LOGIC ---
+          const userToUpdate = users.find(u => u.email === currentUser.email);
+          if (userToUpdate) {
+              const updatedUser = updateUserStatsAfterContest(userToUpdate, activeContest, results);
+              setUsers(prevUsers => {
+                  const newUsers = prevUsers.map(u => u.email === updatedUser.email ? updatedUser : u);
+                  localStorage.setItem('mindbattle_users', JSON.stringify(newUsers));
+                  return newUsers;
+              });
+          }
       }
       
       setAppView('end');
-  }, [activeContest, currentUser, dispatchWalletAction, isAdmin]);
+  }, [activeContest, currentUser, dispatchWalletAction, isAdmin, users]);
+
 
   const handleRestart = useCallback(() => {
     setActiveContest(null);
@@ -409,6 +429,8 @@ const App: React.FC = () => {
         walletBalance: 500, 
         banned: false,
         registrationDate: Date.now(),
+        totalPoints: 0,
+        contestHistory: [],
         transactions: [{
             id: `txn_init_${Date.now()}`,
             type: 'deposit',
@@ -609,7 +631,9 @@ const App: React.FC = () => {
           walletBalance: 0,
           banned: false,
           registrationDate: Date.now(),
-          transactions: []
+          transactions: [],
+          totalPoints: 0,
+          contestHistory: [],
       };
       setUsers(prevUsers => {
         const updatedUsers = [...prevUsers, newAdmin];

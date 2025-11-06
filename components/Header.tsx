@@ -1,6 +1,8 @@
 import React from 'react';
 import { User } from '../types';
 import { MindBattleIcon, SettingsIcon, WalletIcon } from './icons';
+import RankBadge from './RankBadge';
+import { getRank } from '../services/rankingService';
 
 interface HeaderProps {
   currentUser: User | null;
@@ -24,8 +26,8 @@ const Header: React.FC<HeaderProps> = ({ currentUser, isAdmin, onLoginRequest, o
       </div>
       <div className="flex items-center gap-4">
         {currentUser ? (
-          <div className="flex items-center gap-4">
-            {!isAdmin && (
+          <div className="flex items-center gap-2 sm:gap-4">
+             {!isAdmin && (
                <button
                 onClick={onGoToWallet}
                 className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-full px-4 py-2 hover:bg-slate-700/50 hover:border-amber-400 transition-all"
@@ -35,7 +37,12 @@ const Header: React.FC<HeaderProps> = ({ currentUser, isAdmin, onLoginRequest, o
                   <span className="font-bold text-amber-300 font-roboto-mono">${currentUser.walletBalance.toLocaleString()}</span>
               </button>
             )}
-            <span className="text-slate-300 hidden md:inline">Welcome, <span className="font-bold">{currentUser.name}</span></span>
+
+            <div className="hidden md:flex flex-col items-end">
+                <span className="text-slate-300 font-bold -mb-0.5">{currentUser.name}</span>
+                {!isAdmin && <RankBadge rank={getRank(currentUser.totalPoints || 0)} />}
+            </div>
+            
             <button 
               onClick={onLogout}
               className="bg-slate-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-slate-500 transition-colors duration-300"
