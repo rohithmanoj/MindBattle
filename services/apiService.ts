@@ -335,7 +335,9 @@ export const cancelContest = async (contestId: string, admin: User): Promise<{ u
         }
     });
     
-    const updatedContests = contests.map(c => c.id === contestId ? { ...c, status: 'Cancelled', participants: [] } : c);
+    // Fix for type error TS2322. Explicitly setting the return type of the map
+    // callback ensures TypeScript correctly unifies the types from the ternary branches.
+    const updatedContests = contests.map((c): Contest => (c.id === contestId ? { ...c, status: 'Cancelled', participants: [] } : c));
     
     writeToDb(DB_KEYS.CONTESTS, updatedContests);
     writeToDb(DB_KEYS.USERS, users);
