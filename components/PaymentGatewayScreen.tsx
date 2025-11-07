@@ -29,13 +29,13 @@ const PaymentGatewayScreen: React.FC<PaymentGatewayScreenProps> = ({ amount, onS
             setError('Please enter a valid 3-digit CVV.');
             return;
         }
-        
+
         setIsProcessing(true);
         setTimeout(() => {
             onSuccess();
         }, 3000); // Simulate network delay
     };
-    
+
     // Format card number with spaces
     const formatCardNumber = (value: string) => {
         const cleaned = value.replace(/\D/g, '');
@@ -80,17 +80,17 @@ const PaymentGatewayScreen: React.FC<PaymentGatewayScreenProps> = ({ amount, onS
                     </div>
                     <div className="flex gap-4 mb-4">
                         <div className="w-1/2">
-                             <label htmlFor="expiry" className="block text-slate-300 font-semibold mb-2">Expiry Date</label>
+                            <label htmlFor="expiry" className="block text-slate-300 font-semibold mb-2">Expiry Date</label>
                             <input id="expiry" type="text" value={expiry} onChange={(e) => formatExpiry(e.target.value)} className="w-full bg-slate-900 border-2 border-slate-600 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="MM/YY" />
                         </div>
                         <div className="w-1/2">
-                             <label htmlFor="cvv" className="block text-slate-300 font-semibold mb-2">CVV</label>
+                            <label htmlFor="cvv" className="block text-slate-300 font-semibold mb-2">CVV</label>
                             <input id="cvv" type="text" value={cvv} onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').substring(0, 3))} className="w-full bg-slate-900 border-2 border-slate-600 rounded-lg py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="123" />
                         </div>
                     </div>
-                    
+
                     {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
-                    
+
                     <div className="flex flex-col gap-4 mt-8">
                         <button type="submit" className="w-full bg-green-600 text-white font-bold text-lg py-3 px-6 rounded-lg hover:bg-green-500 transition-colors duration-300">
                             Pay ${amount.toLocaleString()}

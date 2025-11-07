@@ -3,9 +3,9 @@ import { Contest } from '../types';
 import { MindBattleIcon } from './icons';
 
 interface WaitingRoomScreenProps {
-  contest: Contest;
-  onContestStart: () => void;
-  onBack: () => void;
+    contest: Contest;
+    onContestStart: () => void;
+    onBack: () => void;
 }
 
 const Countdown: React.FC<{ targetDate: number }> = ({ targetDate }) => {
@@ -48,7 +48,7 @@ const Countdown: React.FC<{ targetDate: number }> = ({ targetDate }) => {
 
     return (
         <div className="flex justify-center gap-4 sm:gap-8 font-roboto-mono">
-            {timeParts.map(({unit, value}) => (
+            {timeParts.map(({ unit, value }) => (
                 <div key={unit} className="flex flex-col items-center">
                     <span className="text-4xl sm:text-6xl font-bold text-white tracking-widest">{String(value).padStart(2, '0')}</span>
                     <span className="text-sm sm:text-base text-slate-400 uppercase">{unit}</span>
@@ -86,14 +86,14 @@ const WaitingRoomScreen: React.FC<WaitingRoomScreenProps> = ({ contest, onContes
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold mb-2 text-slate-200">You are registered for:</h2>
             <p className="text-3xl sm:text-4xl font-bold text-amber-400 mb-6">{contest.title}</p>
-            
+
             <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6 sm:p-8 w-full max-w-3xl mb-8">
                 <h3 className="text-xl sm:text-2xl text-slate-300 mb-4">The battle begins in...</h3>
                 <Countdown targetDate={contest.contestStartDate} />
             </div>
 
             <p className="text-slate-400 mb-8 max-w-lg">The quiz will start automatically when the timer hits zero. Make sure you're ready!</p>
-            <button 
+            <button
                 onClick={onBack}
                 className="bg-slate-600 text-white font-bold text-lg py-3 px-6 rounded-lg hover:bg-slate-500 transition-all duration-300 ease-in-out transform hover:scale-105"
             >

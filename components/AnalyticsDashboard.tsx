@@ -6,8 +6,8 @@ import RankBadge from './RankBadge';
 import { generateAdminInsights } from '../services/geminiService';
 
 interface AnalyticsDashboardProps {
-  users: StoredUser[];
-  contests: Contest[];
+    users: StoredUser[];
+    contests: Contest[];
 }
 
 const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ users, contests }) => {
@@ -24,23 +24,23 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ users, contests
             const rank = getRank(user.totalPoints);
             rankDistribution[rank]++;
         });
-        
+
         const topTitaniumGeniuses = regularUsers
             .filter(u => getRank(u.totalPoints) === 'Titanium Genius')
             .map(u => {
-                 const winRate = u.contestHistory.length > 0
+                const winRate = u.contestHistory.length > 0
                     ? (u.contestHistory.filter(h => h.pointsEarned > 0).length / u.contestHistory.length) * 100
                     : 0;
-                 const difficulties = u.contestHistory.map(h => h.difficulty);
-                 const mostPlayed = difficulties.length > 0 ?
+                const difficulties = u.contestHistory.map(h => h.difficulty);
+                const mostPlayed = difficulties.length > 0 ?
                     Object.entries(difficulties.reduce((acc, d) => { acc[d] = (acc[d] || 0) + 1; return acc; }, {} as Record<string, number>))
-                          .sort((a,b) => b[1] - a[1])[0][0]
+                        .sort((a, b) => b[1] - a[1])[0][0]
                     : 'N/A';
-                 return { ...u, winRate, mostPlayed };
+                return { ...u, winRate, mostPlayed };
             })
             .sort((a, b) => b.winRate - a.winRate || b.totalPoints - a.totalPoints)
             .slice(0, 5);
-        
+
         return { rankDistribution, topTitaniumGeniuses };
     }, [regularUsers]);
 
@@ -81,24 +81,24 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ users, contests
             setIsGenerating(false);
         }
     };
-    
+
     return (
         <div className="space-y-8">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Leaderboard */}
                 <div className="bg-slate-800/40 p-4 rounded-lg">
                     <h3 className="text-xl font-semibold text-slate-200 mb-4">Player Leaderboard</h3>
-                     <div className="overflow-y-auto max-h-[60vh]">
+                    <div className="overflow-y-auto max-h-[60vh]">
                         <table className="w-full text-sm text-left text-slate-300">
-                             <thead className="text-xs text-slate-400 uppercase bg-slate-800 sticky top-0">
+                            <thead className="text-xs text-slate-400 uppercase bg-slate-800 sticky top-0">
                                 <tr>
                                     <th className="px-4 py-2 w-12 text-center">#</th>
                                     <th className="px-4 py-2 cursor-pointer" onClick={() => handleSort('name')}>Player</th>
                                     <th className="px-4 py-2 cursor-pointer" onClick={() => handleSort('totalPoints')}>Points</th>
                                     <th className="px-4 py-2">Rank</th>
                                 </tr>
-                             </thead>
-                             <tbody className="divide-y divide-slate-700">
+                            </thead>
+                            <tbody className="divide-y divide-slate-700">
                                 {sortedLeaderboard.map((user, index) => (
                                     <tr key={user.email} className="hover:bg-slate-700/50">
                                         <td className="px-4 py-2 text-center font-bold">{index + 1}</td>
@@ -107,7 +107,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ users, contests
                                         <td className="px-4 py-2"><RankBadge rank={getRank(user.totalPoints)} /></td>
                                     </tr>
                                 ))}
-                             </tbody>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -115,22 +115,22 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ users, contests
                 {/* Ranks & Top Players */}
                 <div className="space-y-8">
                     <div className="bg-slate-800/40 p-4 rounded-lg">
-                         <h3 className="text-xl font-semibold text-slate-200 mb-4">Rank Distribution</h3>
-                         <div className="space-y-2">
+                        <h3 className="text-xl font-semibold text-slate-200 mb-4">Rank Distribution</h3>
+                        <div className="space-y-2">
                             {RANK_ORDER.map(rank => (
                                 <div key={rank} className="flex items-center gap-2">
                                     <RankBadge rank={rank} className="w-40 justify-center" />
                                     <div className="flex-grow bg-slate-700 rounded-full h-4">
-                                         <div className="bg-indigo-500 h-4 rounded-full text-right" style={{ width: `${(stats.rankDistribution[rank] / (regularUsers.length || 1)) * 100}%`}}>
-                                         </div>
+                                        <div className="bg-indigo-500 h-4 rounded-full text-right" style={{ width: `${(stats.rankDistribution[rank] / (regularUsers.length || 1)) * 100}%` }}>
+                                        </div>
                                     </div>
                                     <span className="w-12 text-right font-roboto-mono font-bold">{stats.rankDistribution[rank]}</span>
                                 </div>
                             ))}
-                         </div>
+                        </div>
                     </div>
 
-                     <div className="bg-slate-800/40 p-4 rounded-lg">
+                    <div className="bg-slate-800/40 p-4 rounded-lg">
                         <h3 className="text-xl font-semibold text-slate-200 mb-4">Top 5 Titanium Geniuses</h3>
                         <ul className="space-y-2">
                             {stats.topTitaniumGeniuses.map((user, index) => (
@@ -154,10 +154,10 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ users, contests
                 </div>
             </div>
 
-             {/* AI Insights */}
+            {/* AI Insights */}
             <div className="bg-slate-800/40 p-4 rounded-lg">
-                 <h3 className="text-xl font-semibold text-slate-200 mb-4">AI-Powered Insights</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <h3 className="text-xl font-semibold text-slate-200 mb-4">AI-Powered Insights</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <label htmlFor="ai-prompt" className="block text-slate-300 text-sm font-semibold mb-1">Your Question</label>
                         <textarea id="ai-prompt" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={4} className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder="Ask about player performance, contest engagement, etc."></textarea>
@@ -165,16 +165,16 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ users, contests
                             {isGenerating ? 'Analyzing...' : '✨ Generate Insights'}
                         </button>
                     </div>
-                     <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 min-h-[150px] max-h-[40vh] overflow-y-auto">
+                    <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 min-h-[150px] max-h-[40vh] overflow-y-auto">
                         <h4 className="font-bold text-amber-300 mb-2">AI Analyst Response:</h4>
                         {isGenerating && <div className="text-slate-400 animate-pulse">Thinking...</div>}
                         {aiResponse ? (
-                             <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans">{aiResponse}</pre>
+                            <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans">{aiResponse}</pre>
                         ) : !isGenerating && (
                             <p className="text-slate-500">Your generated insights will appear here.</p>
                         )}
                     </div>
-                 </div>
+                </div>
             </div>
         </div>
     );

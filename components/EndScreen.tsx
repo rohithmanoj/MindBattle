@@ -3,10 +3,10 @@ import { GameResults } from '../types';
 import { MindBattleIcon } from './icons';
 
 interface EndScreenProps {
-  results: GameResults;
-  onRestart: () => void;
-  totalQuestions: number;
-  prizeAmounts: number[];
+    results: GameResults;
+    onRestart: () => void;
+    totalQuestions: number;
+    prizeAmounts: number[];
 }
 
 const KBCResultScreen: React.FC<Pick<EndScreenProps, 'results' | 'onRestart' | 'totalQuestions' | 'prizeAmounts'>> = ({ results, onRestart, totalQuestions, prizeAmounts }) => {
@@ -18,7 +18,7 @@ const KBCResultScreen: React.FC<Pick<EndScreenProps, 'results' | 'onRestart' | '
         : prizeAmounts.includes(score)
             ? totalQuestions - prizeAmounts.indexOf(score)
             : 0;
-        
+
     const getMessage = () => {
         if (score === prizeAmounts[0]) return "Congratulations! You're a MindBattle Champion!";
         if (score >= prizeAmounts[Math.floor(prizeAmounts.length / 2)]) return "Incredible performance!";
@@ -34,7 +34,7 @@ const KBCResultScreen: React.FC<Pick<EndScreenProps, 'results' | 'onRestart' | '
                 ${score.toLocaleString()}
             </div>
             <p className="text-slate-400 mb-8">You answered {questionsAnswered} out of {totalQuestions} questions correctly.</p>
-            <button 
+            <button
                 onClick={onRestart}
                 className="bg-indigo-600 text-white font-bold text-xl py-4 px-8 rounded-lg hover:bg-indigo-500 transition-all duration-300 ease-in-out transform hover:scale-105 shadow-lg shadow-indigo-500/20"
             >
@@ -74,7 +74,7 @@ const FastestFingerResultScreen: React.FC<Pick<EndScreenProps, 'results' | 'onRe
                     </tbody>
                 </table>
             </div>
-             <button 
+            <button
                 onClick={onRestart}
                 className="bg-indigo-600 text-white font-bold text-xl py-4 px-8 rounded-lg hover:bg-indigo-500 transition-all duration-300 ease-in-out transform hover:scale-105 shadow-lg shadow-indigo-500/20"
             >
@@ -85,15 +85,15 @@ const FastestFingerResultScreen: React.FC<Pick<EndScreenProps, 'results' | 'onRe
 };
 
 const EndScreen: React.FC<EndScreenProps> = (props) => {
-  return (
-    <div className="flex flex-col items-center justify-center h-full text-white text-center p-8 bg-slate-900/50 backdrop-blur-sm rounded-lg">
-      <div className="w-20 h-20 mb-4">
-        <MindBattleIcon />
-      </div>
-      {props.results.format === 'KBC' && <KBCResultScreen {...props} />}
-      {props.results.format === 'FastestFinger' && <FastestFingerResultScreen {...props} />}
-    </div>
-  );
+    return (
+        <div className="flex flex-col items-center justify-center h-full text-white text-center p-8 bg-slate-900/50 backdrop-blur-sm rounded-lg">
+            <div className="w-20 h-20 mb-4">
+                <MindBattleIcon />
+            </div>
+            {props.results.format === 'KBC' && <KBCResultScreen {...props} />}
+            {props.results.format === 'FastestFinger' && <FastestFingerResultScreen {...props} />}
+        </div>
+    );
 };
 
 export default EndScreen;
