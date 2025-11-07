@@ -68,7 +68,7 @@ export const processWalletAction = (user: StoredUser, action: WalletAction): Sto
             updatedTransactions.unshift(newTransaction);
             break;
         }
-        
+
         case 'WITHDRAWAL_APPROVE': {
             const txIndex = updatedTransactions.findIndex(tx => tx.id === payload.transactionId && tx.status === 'pending');
             if (txIndex > -1) {
@@ -87,7 +87,7 @@ export const processWalletAction = (user: StoredUser, action: WalletAction): Sto
         }
 
         case 'WITHDRAWAL_DECLINE': {
-             const txIndex = updatedTransactions.findIndex(tx => tx.id === payload.transactionId && tx.status === 'pending');
+            const txIndex = updatedTransactions.findIndex(tx => tx.id === payload.transactionId && tx.status === 'pending');
             if (txIndex > -1) {
                 const originalTx = updatedTransactions[txIndex];
                 updatedTransactions[txIndex] = {
@@ -107,7 +107,7 @@ export const processWalletAction = (user: StoredUser, action: WalletAction): Sto
             console.warn(`Unknown wallet action type: ${type}`);
             return user;
     }
-    
+
     return {
         ...user,
         walletBalance: newBalance,

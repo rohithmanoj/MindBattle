@@ -2,17 +2,17 @@ import { StoredUser, Contest, GameResults, Difficulty, Rank, UserContestHistory 
 import { SCORING_POINTS, RANK_THRESHOLDS, RANK_ORDER } from '../constants';
 
 export const getRank = (points: number): Rank => {
-  for (const rank of RANK_ORDER) {
-    if (points >= RANK_THRESHOLDS[rank]) {
-      return rank;
+    for (const rank of RANK_ORDER) {
+        if (points >= RANK_THRESHOLDS[rank]) {
+            return rank;
+        }
     }
-  }
-  return 'Bronze Beginner';
+    return 'Bronze Beginner';
 };
 
 export const calculatePoints = (difficulty: Difficulty, isWin: boolean): number => {
-  const points = SCORING_POINTS[difficulty];
-  return points.base + (isWin ? points.win : points.loss);
+    const points = SCORING_POINTS[difficulty];
+    return points.base + (isWin ? points.win : points.loss);
 };
 
 export const updateUserStatsAfterContest = (user: StoredUser, contest: Contest, results: GameResults): StoredUser => {
@@ -43,7 +43,7 @@ export const updateUserStatsAfterContest = (user: StoredUser, contest: Contest, 
         pointsEarned,
         timestamp: Date.now(),
     };
-    
+
     const updatedUser: StoredUser = {
         ...user,
         totalPoints: Math.max(0, (user.totalPoints || 0) + pointsEarned), // Ensure points don't go below zero

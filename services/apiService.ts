@@ -11,10 +11,10 @@ import { updateUserStatsAfterContest } from './rankingService';
 // This architecture allows the UI to be easily switched to a real backend in the future.
 
 const DB_KEYS = {
-  USERS: 'mindbattle_users',
-  CONTESTS: 'mindbattle_contests',
-  SETTINGS: 'mindbattle_settings',
-  AUDIT_LOG: 'mindbattle_audit_log'
+    USERS: 'mindbattle_users',
+    CONTESTS: 'mindbattle_contests',
+    SETTINGS: 'mindbattle_settings',
+    AUDIT_LOG: 'mindbattle_audit_log'
 };
 
 const API_URL = ''; // Use a relative path to leverage the Vercel proxy
@@ -53,26 +53,26 @@ const fetchWithRetry = async (url: string, retries = 3, initialDelay = 4000, bac
 
 
 const readFromDb = <T>(key: string): T => {
-  try {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
-  } catch {
-    return null;
-  }
+    try {
+        const data = localStorage.getItem(key);
+        return data ? JSON.parse(data) : null;
+    } catch {
+        return null;
+    }
 };
 
 const writeToDb = <T>(key: string, data: T) => {
-  localStorage.setItem(key, JSON.stringify(data));
+    localStorage.setItem(key, JSON.stringify(data));
 };
 
 const logAdminAction = (admin: User, action: AuditLogAction, details: string): AuditLog => {
     const newLog: AuditLog = {
-      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      timestamp: Date.now(),
-      adminEmail: admin.email,
-      adminName: admin.name,
-      action,
-      details
+        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        timestamp: Date.now(),
+        adminEmail: admin.email,
+        adminName: admin.name,
+        action,
+        details
     };
     const allLogs = readFromDb<AuditLog[]>(DB_KEYS.AUDIT_LOG) || [];
     writeToDb(DB_KEYS.AUDIT_LOG, [newLog, ...allLogs]);
@@ -83,68 +83,68 @@ const logAdminAction = (admin: User, action: AuditLogAction, details: string): A
 // --- PUBLIC API ---
 
 export const initializeData = async (): Promise<{ users: StoredUser[], contests: Contest[], settings: GameSettings, auditLog: AuditLog[] }> => {
-  // User data migration
-  let loadedUsers: StoredUser[] = readFromDb<StoredUser[]>(DB_KEYS.USERS) || [];
-  let userMigrationNeeded = false;
-  const migratedUsers = loadedUsers.map(u => {
-      const newUser = {...u};
-      let userChanged = false;
-      if (!u.registrationDate) { userChanged = true; newUser.registrationDate = new Date('2024-01-01').getTime(); }
-      if (typeof u.totalPoints === 'undefined') { userChanged = true; newUser.totalPoints = 0; }
-      if (!u.contestHistory) { userChanged = true; newUser.contestHistory = []; }
-      if (userChanged) userMigrationNeeded = true;
-      return newUser;
-  });
-  if (!migratedUsers.some(u => u.email === ADMIN_EMAIL)) {
-    userMigrationNeeded = true;
-    migratedUsers.push({
-        name: 'Super Admin', email: ADMIN_EMAIL, password: ADMIN_PASSWORD,
-        walletBalance: 0, transactions: [], banned: false, role: 'Super Admin',
-        registrationDate: Date.now(), totalPoints: 0, contestHistory: []
+    // User data migration
+    let loadedUsers: StoredUser[] = readFromDb<StoredUser[]>(DB_KEYS.USERS) || [];
+    let userMigrationNeeded = false;
+    const migratedUsers = loadedUsers.map(u => {
+        const newUser = { ...u };
+        let userChanged = false;
+        if (!u.registrationDate) { userChanged = true; newUser.registrationDate = new Date('2024-01-01').getTime(); }
+        if (typeof u.totalPoints === 'undefined') { userChanged = true; newUser.totalPoints = 0; }
+        if (!u.contestHistory) { userChanged = true; newUser.contestHistory = []; }
+        if (userChanged) userMigrationNeeded = true;
+        return newUser;
     });
-  }
-  if (userMigrationNeeded) writeToDb(DB_KEYS.USERS, migratedUsers);
-  
-  // Settings
-  let settings = readFromDb<GameSettings>(DB_KEYS.SETTINGS);
-  if (!settings) {
-    settings = { prizeAmounts: DEFAULT_PRIZE_AMOUNTS, categories: DEFAULT_CATEGORIES, paymentGatewaySettings: DEFAULT_PAYMENT_GATEWAY_SETTINGS, timePerQuestion: DEFAULT_TIME_PER_QUESTION };
-    writeToDb(DB_KEYS.SETTINGS, settings);
-  }
+    if (!migratedUsers.some(u => u.email === ADMIN_EMAIL)) {
+        userMigrationNeeded = true;
+        migratedUsers.push({
+            name: 'Super Admin', email: ADMIN_EMAIL, password: ADMIN_PASSWORD,
+            walletBalance: 0, transactions: [], banned: false, role: 'Super Admin',
+            registrationDate: Date.now(), totalPoints: 0, contestHistory: []
+        });
+    }
+    if (userMigrationNeeded) writeToDb(DB_KEYS.USERS, migratedUsers);
 
-  // Fetch contests from the backend with a robust retry mechanism
-  let loadedContests: Contest[] = [];
-  try {
-    console.log("Attempting to fetch contests from backend...");
-    const response = await fetchWithRetry(`${API_URL}/api/contests`);
-    if (!response.ok) {
-        // This will handle 4xx errors that fetchWithRetry doesn't retry
-        throw new Error(`Backend responded with status: ${response.status}`);
+    // Settings
+    let settings = readFromDb<GameSettings>(DB_KEYS.SETTINGS);
+    if (!settings) {
+        settings = { prizeAmounts: DEFAULT_PRIZE_AMOUNTS, categories: DEFAULT_CATEGORIES, paymentGatewaySettings: DEFAULT_PAYMENT_GATEWAY_SETTINGS, timePerQuestion: DEFAULT_TIME_PER_QUESTION };
+        writeToDb(DB_KEYS.SETTINGS, settings);
     }
-    loadedContests = await response.json();
-    writeToDb(DB_KEYS.CONTESTS, loadedContests);
-    console.log("Successfully fetched contests from backend.");
-  } catch (error) {
-    console.error("Failed to fetch contests from backend after multiple retries. Falling back to local cache if available.", error);
-    const cachedContests = readFromDb<Contest[]>(DB_KEYS.CONTESTS);
-    if (cachedContests) {
-      console.log("Loaded contests from local cache.");
-      loadedContests = cachedContests;
-    } else {
-      console.error("No local cache available for contests. The application may not function correctly.");
-    }
-    // Re-throw the original error to be caught by the UI
-    if (error instanceof Error) {
-        // Append a more user-friendly message for display
-        const fetchError = new Error(`Failed to fetch contests. ${error.message}`);
-        throw fetchError;
-    }
-    throw error;
-  }
-  
-  const auditLog = readFromDb<AuditLog[]>(DB_KEYS.AUDIT_LOG) || [];
 
-  return { users: migratedUsers, contests: loadedContests, settings, auditLog };
+    // Fetch contests from the backend with a robust retry mechanism
+    let loadedContests: Contest[] = [];
+    try {
+        console.log("Attempting to fetch contests from backend...");
+        const response = await fetchWithRetry(`${API_URL}/api/contests`);
+        if (!response.ok) {
+            // This will handle 4xx errors that fetchWithRetry doesn't retry
+            throw new Error(`Backend responded with status: ${response.status}`);
+        }
+        loadedContests = await response.json();
+        writeToDb(DB_KEYS.CONTESTS, loadedContests);
+        console.log("Successfully fetched contests from backend.");
+    } catch (error) {
+        console.error("Failed to fetch contests from backend after multiple retries. Falling back to local cache if available.", error);
+        const cachedContests = readFromDb<Contest[]>(DB_KEYS.CONTESTS);
+        if (cachedContests) {
+            console.log("Loaded contests from local cache.");
+            loadedContests = cachedContests;
+        } else {
+            console.error("No local cache available for contests. The application may not function correctly.");
+        }
+        // Re-throw the original error to be caught by the UI
+        if (error instanceof Error) {
+            // Append a more user-friendly message for display
+            const fetchError = new Error(`Failed to fetch contests. ${error.message}`);
+            throw fetchError;
+        }
+        throw error;
+    }
+
+    const auditLog = readFromDb<AuditLog[]>(DB_KEYS.AUDIT_LOG) || [];
+
+    return { users: migratedUsers, contests: loadedContests, settings, auditLog };
 };
 
 export const fetchDiagnostics = async (): Promise<string[]> => {
@@ -186,15 +186,15 @@ export const register = async (name: string, email: string, password: string): P
     await simulateDelay(500);
     const users = readFromDb<StoredUser[]>(DB_KEYS.USERS) || [];
     if (users.some(u => u.email === email)) throw new Error('An account with this email already exists.');
-    
-    const newUser: StoredUser = { 
-        name, email, password, 
+
+    const newUser: StoredUser = {
+        name, email, password,
         walletBalance: 500, banned: false, registrationDate: Date.now(),
         totalPoints: 0, contestHistory: [],
         transactions: [{
             id: `txn_init_${Date.now()}`, type: 'deposit', amount: 500,
             description: 'Initial sign-up bonus', timestamp: Date.now(), status: 'completed',
-        }] 
+        }]
     };
     const updatedUsers = [...users, newUser];
     writeToDb(DB_KEYS.USERS, updatedUsers);
@@ -229,14 +229,14 @@ export const updateContest = async (updatedContest: Contest, admin: User): Promi
     const oldContest = contests.find(c => c.id === updatedContest.id);
     const updatedContests = contests.map(c => c.id === updatedContest.id ? updatedContest : c);
     writeToDb(DB_KEYS.CONTESTS, updatedContests);
-    
+
     let newLog: AuditLog | null = null;
     if (oldContest) {
         let action: AuditLogAction | null = 'CONTEST_UPDATED';
         let details = `Contest: '${updatedContest.title}' (${updatedContest.id})`;
         if (oldContest.status === 'Pending Approval' && updatedContest.status === 'Upcoming') { action = 'CONTEST_APPROVED'; }
         else if (oldContest.status === 'Pending Approval' && updatedContest.status === 'Rejected') { action = 'CONTEST_REJECTED'; }
-        if(action) newLog = logAdminAction(admin, action, details);
+        if (action) newLog = logAdminAction(admin, action, details);
     }
     return { updatedContests, newLog };
 };
@@ -268,14 +268,14 @@ export const cancelContest = async (contestId: string, admin: User): Promise<{ u
             }
         }
     });
-    
+
     // Fix for type error TS2322. Explicitly setting the return type of the map
     // callback ensures TypeScript correctly unifies the types from the ternary branches.
     const updatedContests = contests.map((c): Contest => (c.id === contestId ? { ...c, status: 'Cancelled', participants: [] } : c));
-    
+
     writeToDb(DB_KEYS.CONTESTS, updatedContests);
     writeToDb(DB_KEYS.USERS, users);
-    
+
     const newLog = logAdminAction(admin, 'CONTEST_CANCELLED', `Contest: '${contestToCancel.title}' (${contestToCancel.id})`);
     return { updatedContests, updatedUsers: users, newLog };
 };
@@ -314,7 +314,7 @@ export const createAdmin = async (name: string, email: string, password: string,
     await simulateDelay();
     const users = readFromDb<StoredUser[]>(DB_KEYS.USERS) || [];
     if (users.some(u => u.email === email)) throw new Error('An account with this email already exists.');
-    
+
     const newAdmin: StoredUser = {
         name, email, password, role, walletBalance: 0, banned: false,
         registrationDate: Date.now(), transactions: [], totalPoints: 0, contestHistory: [],
@@ -410,7 +410,7 @@ export const registerForContest = async (contestId: string, userId: string): Pro
 
     writeToDb(DB_KEYS.USERS, users);
     writeToDb(DB_KEYS.CONTESTS, updatedContests);
-    
+
     return { updatedContests, updatedUsers: users };
 };
 
@@ -422,11 +422,11 @@ export const endGameAndUpdateStats = async (contestId: string, userId: string, r
     const contestIndex = contests.findIndex(c => c.id === contestId);
 
     if (userIndex === -1 || contestIndex === -1) throw new Error("User or contest not found.");
-    
+
     let user = users[userIndex];
     const contest = contests[contestIndex];
     let newResult: ContestResult | null = null;
-    
+
     // --- Prize Money Logic ---
     if (results.format === 'KBC' && results.score > 0) {
         user = processWalletAction(user, {
@@ -443,7 +443,7 @@ export const endGameAndUpdateStats = async (contestId: string, userId: string, r
         const otherUserResults = existingResults.filter(r => r.userId !== userId);
         contests[contestIndex] = { ...contest, results: [...otherUserResults, newResult] };
     }
-    
+
     // --- Ranking Logic ---
     user = updateUserStatsAfterContest(user, contest, results);
     users[userIndex] = user;
