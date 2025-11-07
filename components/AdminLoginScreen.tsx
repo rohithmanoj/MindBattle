@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 
 interface AdminLoginScreenProps {
-  // FIX: Update prop type to handle async login function
   onAdminLogin: (email: string, password: string) => Promise<boolean>;
   onCancel: () => void;
   onNavigateToUserLogin: () => void;
@@ -12,7 +11,6 @@ const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({ onAdminLogin, onCan
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  // FIX: Make the handler async to await the login result
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (email.trim() === '' || password.trim() === '') {

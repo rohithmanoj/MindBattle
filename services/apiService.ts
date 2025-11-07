@@ -15,7 +15,7 @@ const DB_KEYS = {
   AUDIT_LOG: 'mindbattle_audit_log'
 };
 
-const API_URL = 'http://localhost:3001';
+const API_URL = ''; // Use relative path for API calls
 
 // Fallback data, moved from the deleted data.ts file
 const FALLBACK_MOCK_CONTESTS: Contest[] = [
@@ -524,19 +524,19 @@ export const updateContestStatuses = async (): Promise<{ changed: boolean, updat
     const now = Date.now();
     let contestsHaveChanged = false;
 
-    const updatedContests = contests.map(contest => {
-        // FIX: The previous mutable approach caused type-widening issues in some TypeScript configurations.
-        // This immutable approach is safer and clearer for TypeScript's type inference.
-        // FIX: Explicitly type `currentStatus` to prevent type widening to `string`.
-        let currentStatus: Contest['status'] = contest.status;
-        let hasChanged = false;
+    // FIX: The logic is refactored to use a mutable copy within the map,
+    // which resolves the TypeScript type-widening issue while keeping the logic clear.
+    const updatedContests = contests.map(c => {
+        // FIX: Explicitly type the mutable copy to prevent type widening of 'status' property.
+        const contest: Contest = { ...c }; // create a mutable copy to prevent type issues
+        let statusChanged = false;
 
-        if (currentStatus === 'Upcoming' && now >= contest.contestStartDate) {
-            currentStatus = 'Live';
-            hasChanged = true;
+        if (contest.status === 'Upcoming' && now >= contest.contestStartDate) {
+            contest.status = 'Live';
+            statusChanged = true;
         }
 
-        if (currentStatus === 'Live') {
+        if (contest.status === 'Live') {
             let isFinished = false;
             if (contest.format === 'FastestFinger' && contest.timerType === 'total_contest' && contest.totalContestTime) {
                 if (now > contest.contestStartDate + (contest.totalContestTime * 1000)) {
@@ -549,14 +549,13 @@ export const updateContestStatuses = async (): Promise<{ changed: boolean, updat
                 }
             }
             if (isFinished) {
-                currentStatus = 'Finished';
-                hasChanged = true;
+                contest.status = 'Finished';
+                statusChanged = true;
             }
         }
 
-        if (hasChanged) {
+        if (statusChanged) {
             contestsHaveChanged = true;
-            return { ...contest, status: currentStatus };
         }
 
         return contest;
