@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 
 interface AdminLoginScreenProps {
-  onAdminLogin: (email: string, password: string) => boolean;
+  // FIX: Update prop type to handle async login function
+  onAdminLogin: (email: string, password: string) => Promise<boolean>;
   onCancel: () => void;
   onNavigateToUserLogin: () => void;
 }
@@ -11,13 +12,14 @@ const AdminLoginScreen: React.FC<AdminLoginScreenProps> = ({ onAdminLogin, onCan
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  // FIX: Make the handler async to await the login result
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (email.trim() === '' || password.trim() === '') {
       setError('Email and password cannot be empty.');
       return;
     }
-    const success = onAdminLogin(email, password);
+    const success = await onAdminLogin(email, password);
     if (!success) {
       setError('Invalid admin credentials.');
     }

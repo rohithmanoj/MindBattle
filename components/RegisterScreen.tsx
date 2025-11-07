@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 interface RegisterScreenProps {
-  onRegister: (name: string, email: string, password: string) => { success: boolean, message: string };
+  onRegister: (name: string, email: string, password: string) => Promise<{ success: boolean, message: string }>;
   onCancel: () => void;
   onNavigateToLogin: () => void;
 }
@@ -11,8 +11,9 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onCancel, o
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (name.trim() === '' || email.trim() === '' || password.trim() === '') {
       setError('All fields are required.');
@@ -23,10 +24,12 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onCancel, o
       return;
     }
     
-    const result = onRegister(name, email, password);
+    setLoading(true);
+    const result = await onRegister(name, email, password);
     if (!result.success) {
       setError(result.message);
     }
+    setLoading(false);
   };
 
   return (
@@ -87,9 +90,10 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegister, onCancel, o
           <div className="flex flex-col gap-4 mt-8">
              <button
               type="submit"
-              className="w-full bg-amber-500 text-slate-900 font-bold text-lg py-3 px-6 rounded-lg hover:bg-amber-400 transition-colors duration-300"
+              disabled={loading}
+              className="w-full bg-amber-500 text-slate-900 font-bold text-lg py-3 px-6 rounded-lg hover:bg-amber-400 transition-colors duration-300 disabled:bg-amber-700 disabled:cursor-wait"
             >
-              Register
+              {loading ? 'Creating Account...' : 'Register'}
             </button>
             <button
               type="button"

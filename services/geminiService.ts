@@ -210,15 +210,17 @@ export const generateAdminInsights = async (prompt: string, users: StoredUser[],
     };
 
     const analyticsData = {
+      totalUsers: users.filter(u => !u.role).length,
+      totalContests: contests.length,
       users: users.filter(u => !u.role).map(u => ({
         name: u.name,
         totalPoints: u.totalPoints,
         rank: getRank(u.totalPoints),
-        contestsPlayed: u.contestHistory.length,
-        winRate: u.contestHistory.length > 0
-          ? (u.contestHistory.filter(h => h.pointsEarned > 0).length / u.contestHistory.length) * 100
+        contestsPlayed: u.contestHistory?.length || 0,
+        winRate: (u.contestHistory?.length || 0) > 0
+          ? ((u.contestHistory.filter(h => h.pointsEarned > 0).length / u.contestHistory.length) * 100).toFixed(1)
           : 0,
-        mostPlayedDifficulty: getMostFrequent(u.contestHistory.map(h => h.difficulty)),
+        mostPlayedDifficulty: getMostFrequent(u.contestHistory?.map(h => h.difficulty) || []),
       })),
       contests: contests.map(c => ({
         title: c.title,

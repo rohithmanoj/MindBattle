@@ -15,11 +15,7 @@ import WaitingRoomScreen from './components/WaitingRoomScreen';
 import FastestFingerQuizScreen from './components/FastestFingerQuizScreen';
 import CreateContestScreen from './components/CreateContestScreen';
 import LeaderboardScreen from './components/LeaderboardScreen';
-import { DEFAULT_CATEGORIES, DEFAULT_PRIZE_AMOUNTS, DEFAULT_PAYMENT_GATEWAY_SETTINGS, ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_TIME_PER_QUESTION } from './constants';
-import { MOCK_CONTESTS } from './data';
-import { processWalletAction } from './services/walletService';
-import { generateTransactionDescription } from './services/geminiService';
-import { updateUserStatsAfterContest } from './services/rankingService';
+import * as api from './services/apiService';
 
 
 const App: React.FC = () => {
@@ -36,157 +32,38 @@ const App: React.FC = () => {
   
   const [contests, setContests] = useState<Contest[]>([]);
   const [auditLog, setAuditLog] = useState<AuditLog[]>([]);
-
-  const [gameSettings, setGameSettings] = useState<GameSettings>({
-    prizeAmounts: DEFAULT_PRIZE_AMOUNTS,
-    categories: DEFAULT_CATEGORIES,
-    paymentGatewaySettings: DEFAULT_PAYMENT_GATEWAY_SETTINGS,
-    timePerQuestion: DEFAULT_TIME_PER_QUESTION,
-  });
+  const [gameSettings, setGameSettings] = useState<GameSettings | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      // User data migration
-      const storedUsers = localStorage.getItem('mindbattle_users');
-      let loadedUsers: StoredUser[] = storedUsers ? JSON.parse(storedUsers) : [];
-      let userMigrationNeeded = false;
-      const migratedUsers = loadedUsers.map(u => {
-          const newUser = {...u};
-          let userChanged = false;
-          if (!u.registrationDate) {
-              userChanged = true;
-              newUser.registrationDate = new Date('2024-01-01').getTime();
-          }
-          if (typeof u.totalPoints === 'undefined') {
-              userChanged = true;
-              newUser.totalPoints = 0;
-          }
-          if (!u.contestHistory) {
-              userChanged = true;
-              newUser.contestHistory = [];
-          }
-          if (userChanged) {
-            userMigrationNeeded = true;
-          }
-          return newUser;
-      });
-      const adminExists = migratedUsers.some(u => u.email === ADMIN_EMAIL);
-      if (!adminExists) {
-        userMigrationNeeded = true;
-        migratedUsers.push({
-            name: 'Super Admin', email: ADMIN_EMAIL, password: ADMIN_PASSWORD,
-            walletBalance: 0, transactions: [], banned: false, role: 'Super Admin',
-            registrationDate: Date.now(), totalPoints: 0, contestHistory: []
-        });
+    const loadInitialData = async () => {
+      try {
+        const { users, contests, settings, auditLog } = await api.initializeData();
+        setUsers(users);
+        setContests(contests);
+        setGameSettings(settings);
+        setAuditLog(auditLog);
+      } catch (e) {
+        console.error("Failed to initialize app data", e);
+        setError("Could not load application data. Please refresh the page.");
+      } finally {
+        setLoading(false);
       }
-      if (userMigrationNeeded) {
-        localStorage.setItem('mindbattle_users', JSON.stringify(migratedUsers));
-      }
-      setUsers(migratedUsers);
-
-      // Settings
-      const storedSettings = localStorage.getItem('mindbattle_settings');
-      if (storedSettings) setGameSettings(JSON.parse(storedSettings));
-
-      // Contest data migration
-      const storedContests = localStorage.getItem('mindbattle_contests');
-      let loadedContests: Contest[] = storedContests ? JSON.parse(storedContests) : MOCK_CONTESTS;
-      let contestMigrationNeeded = false;
-      const migratedContests = loadedContests.map(c => {
-          const newContest = {...c};
-          let hasChanged = false;
-
-          if (!newContest.format || !newContest.timerType) {
-              newContest.format = 'KBC';
-              newContest.timerType = 'per_question';
-              hasChanged = true;
-          }
-          if ((newContest.status as string) === 'Pending') {
-              newContest.status = 'Pending Approval';
-              hasChanged = true;
-          }
-          if (typeof newContest.numberOfQuestions === 'undefined') {
-              newContest.numberOfQuestions = 15;
-              hasChanged = true;
-          }
-           if (!newContest.difficulty) {
-              newContest.difficulty = 'Medium';
-              hasChanged = true;
-          }
-
-          if(hasChanged) {
-            contestMigrationNeeded = true;
-          }
-          return newContest;
-      });
-
-      if (!storedContests || contestMigrationNeeded) {
-          localStorage.setItem('mindbattle_contests', JSON.stringify(migratedContests));
-      }
-      setContests(migratedContests);
-      
-      // Audit Log
-      const storedAuditLog = localStorage.getItem('mindbattle_audit_log');
-      if (storedAuditLog) setAuditLog(JSON.parse(storedAuditLog));
-
-    } catch (e) {
-      console.error("Failed to parse data from localStorage", e);
-    }
+    };
+    loadInitialData();
   }, []);
 
   // Auto-update contest statuses based on time
   useEffect(() => {
-    const statusUpdateInterval = setInterval(() => {
-        const now = Date.now();
-        let contestsHaveChanged = false;
-
-        const updatedContests = contests.map(contest => {
-            const mutableContest = { ...contest };
-            let hasChanged = false;
-
-            // Rule: Upcoming -> Live
-            if (mutableContest.status === 'Upcoming' && now >= mutableContest.contestStartDate) {
-                mutableContest.status = 'Live';
-                hasChanged = true;
-            }
-
-            // Rule: Live -> Finished
-            if (mutableContest.status === 'Live') {
-                let isFinished = false;
-                if (mutableContest.format === 'FastestFinger' && mutableContest.timerType === 'total_contest' && mutableContest.totalContestTime) {
-                    const contestEndTime = mutableContest.contestStartDate + (mutableContest.totalContestTime * 1000);
-                    if (now > contestEndTime) {
-                        isFinished = true;
-                    }
-                } else {
-                    // For KBC or other formats, use a generous buffer (e.g., 2 hours) after contest start time
-                    const contestEndTime = mutableContest.contestStartDate + (2 * 60 * 60 * 1000);
-                     if (now > contestEndTime) {
-                        isFinished = true;
-                    }
-                }
-
-                if (isFinished) {
-                    mutableContest.status = 'Finished';
-                    hasChanged = true;
-                }
-            }
-
-            if (hasChanged) {
-                contestsHaveChanged = true;
-            }
-            return mutableContest;
-        });
-
-        if (contestsHaveChanged) {
+    const statusUpdateInterval = setInterval(async () => {
+        const { changed, updatedContests } = await api.updateContestStatuses();
+        if (changed) {
             setContests(updatedContests);
-            localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
         }
-
     }, 5000); // Check every 5 seconds for better responsiveness in a demo environment
 
     return () => clearInterval(statusUpdateInterval);
-  }, [contests]);
+  }, []);
 
   useEffect(() => {
     if (currentUser?.email) {
@@ -197,121 +74,36 @@ const App: React.FC = () => {
     }
   }, [users, currentUser]);
 
-  const logAdminAction = useCallback((admin: User, action: AuditLogAction, details: string) => {
-      const newLog: AuditLog = {
-        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        timestamp: Date.now(),
-        adminEmail: admin.email,
-        adminName: admin.name,
-        action,
-        details
-      };
-      setAuditLog(prev => {
-        const updatedLog = [newLog, ...prev];
-        localStorage.setItem('mindbattle_audit_log', JSON.stringify(updatedLog));
-        return updatedLog;
-      });
-  }, []);
 
-  const dispatchWalletAction = useCallback((action: WalletAction) => {
-    setUsers(prevUsers => {
-        const updatedUsers = prevUsers.map(user => {
-            if (user.email === action.payload.userId) {
-                return processWalletAction(user, action);
-            }
-            return user;
-        });
-
-        if (JSON.stringify(prevUsers) !== JSON.stringify(updatedUsers)) {
-            localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-        }
-        return updatedUsers;
-    });
-  }, []);
-  
   const handleAdminAdjustWalletAI = useCallback(async (userId: string, amount: number, reasonKeywords: string, adminId: string) => {
-      const description = await generateTransactionDescription(reasonKeywords, amount);
-      dispatchWalletAction({
-          type: 'ADMIN_ADJUSTMENT',
-          payload: {
-              userId,
-              amount,
-              description,
-              updatedBy: adminId,
-          },
-      });
-      if(currentUser) {
-          logAdminAction(currentUser, 'WALLET_ADJUSTED', `Adjusted wallet for ${userId} by $${amount}. Reason: ${reasonKeywords}`);
-      }
-  }, [dispatchWalletAction, currentUser, logAdminAction]);
+      if (!currentUser) return;
+      const { updatedUsers, newLog } = await api.adjustWalletWithAI(userId, amount, reasonKeywords, adminId);
+      setUsers(updatedUsers);
+      setAuditLog(prev => [newLog, ...prev]);
+  }, [currentUser]);
 
-  const handleAdminUpdateWithdrawal = useCallback((userId: string, transactionId: string, action: 'approve' | 'decline', adminId: string) => {
-    dispatchWalletAction({
-        type: action === 'approve' ? 'WITHDRAWAL_APPROVE' : 'WITHDRAWAL_DECLINE',
-        payload: {
-            userId,
-            amount: 0, // amount is irrelevant here, it's derived from the original tx
-            description: '', // service will provide a default
-            transactionId,
-            updatedBy: adminId,
-        }
-    });
-    if (currentUser) {
-        const logAction: AuditLogAction = action === 'approve' ? 'WITHDRAWAL_APPROVED' : 'WITHDRAWAL_DECLINED';
-        logAdminAction(currentUser, logAction, `Withdrawal for ${userId} (Tx: ${transactionId})`);
-    }
-  }, [dispatchWalletAction, currentUser, logAdminAction]);
+  const handleAdminUpdateWithdrawal = useCallback(async (userId: string, transactionId: string, action: 'approve' | 'decline', adminId: string) => {
+    if (!currentUser) return;
+    const { updatedUsers, newLog } = await api.updateWithdrawalStatus(userId, transactionId, action, adminId);
+    setUsers(updatedUsers);
+    setAuditLog(prev => [newLog, ...prev]);
+  }, [currentUser]);
 
 
-  const handleRegisterForContest = useCallback((contest: Contest) => {
+  const handleRegisterForContest = useCallback(async (contest: Contest) => {
     if (!currentUser) {
         setAppView('login');
         return;
     }
-    const user = users.find(u => u.email === currentUser.email);
-    if (user?.banned) {
-        setError('Your account has been suspended. You cannot register for contests.');
-        return;
-    }
-
-    const now = Date.now();
-    if (now < contest.registrationStartDate || now > contest.registrationEndDate) {
-        setError('Registration for this contest is not currently open.');
-        return;
-    }
-    if (now >= contest.contestStartDate) {
-        setError('This contest has already started.');
-        return;
-    }
-    if (contest.participants.length >= contest.maxParticipants) {
-        setError('This contest has reached its maximum number of participants.');
-        return;
-    }
-    if (currentUser.walletBalance < contest.entryFee) {
-        setError(`Insufficient funds. You need $${contest.entryFee} to enter.`);
-        return;
+    try {
+        const { updatedContests, updatedUsers } = await api.registerForContest(contest.id, currentUser.email);
+        setContests(updatedContests);
+        setUsers(updatedUsers);
+    } catch(e) {
+        if (e instanceof Error) setError(e.message);
     }
     
-    if (contest.entryFee > 0) {
-        dispatchWalletAction({
-            type: 'CONTEST_ENTRY',
-            payload: {
-                userId: currentUser.email,
-                amount: contest.entryFee,
-                description: `Entry for ${contest.title}`,
-            }
-        });
-    }
-
-    setContests(prevContests => {
-      const updatedContests = prevContests.map(c => 
-          c.id === contest.id ? { ...c, participants: [...c.participants, currentUser.email] } : c
-      );
-      localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
-      return updatedContests;
-    });
-    
-  }, [currentUser, dispatchWalletAction, users]);
+  }, [currentUser]);
   
   const handleEnterContest = useCallback((contest: Contest) => {
     if (!contest.questions || contest.questions.length === 0) {
@@ -322,59 +114,15 @@ const App: React.FC = () => {
     setAppView('waiting_room');
   }, []);
 
-  const handleEndGame = useCallback((results: GameResults) => {
+  const handleEndGame = useCallback(async (results: GameResults) => {
       setGameResults(results);
-
       if (activeContest && currentUser && !isAdmin) {
-          // --- Prize Money Logic ---
-          let newResult: ContestResult | null = null;
-          if (results.format === 'KBC') {
-              if (results.score > 0) {
-                  dispatchWalletAction({
-                      type: 'CONTEST_WIN',
-                      payload: {
-                          userId: currentUser.email,
-                          amount: results.score,
-                          description: `Prize from ${activeContest.title}`,
-                      }
-                  });
-              }
-              newResult = { userId: currentUser.email, name: currentUser.name, score: results.score };
-          } else if (results.format === 'FastestFinger') {
-              const userResult = results.leaderboard.find(p => p.name === 'You');
-              if (userResult) {
-                  newResult = { userId: currentUser.email, name: currentUser.name, score: userResult.score, time: userResult.time };
-              }
-          }
-          if (newResult) {
-              setContests(prevContests => {
-                const updatedContests = prevContests.map(c => {
-                    if (c.id === activeContest.id) {
-                        const existingResults = c.results || [];
-                        const otherUserResults = existingResults.filter(r => r.userId !== currentUser.email);
-                        return { ...c, results: [...otherUserResults, newResult!] };
-                    }
-                    return c;
-                });
-                localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
-                return updatedContests;
-              });
-          }
-          
-          // --- NEW RANKING LOGIC ---
-          const userToUpdate = users.find(u => u.email === currentUser.email);
-          if (userToUpdate) {
-              const updatedUser = updateUserStatsAfterContest(userToUpdate, activeContest, results);
-              setUsers(prevUsers => {
-                  const newUsers = prevUsers.map(u => u.email === updatedUser.email ? updatedUser : u);
-                  localStorage.setItem('mindbattle_users', JSON.stringify(newUsers));
-                  return newUsers;
-              });
-          }
+          const { updatedContests, updatedUsers } = await api.endGameAndUpdateStats(activeContest.id, currentUser.email, results);
+          setContests(updatedContests);
+          setUsers(updatedUsers);
       }
-      
       setAppView('end');
-  }, [activeContest, currentUser, dispatchWalletAction, isAdmin, users]);
+  }, [activeContest, currentUser, isAdmin]);
 
 
   const handleRestart = useCallback(() => {
@@ -395,60 +143,41 @@ const App: React.FC = () => {
     setAppView('leaderboard');
   }, []);
 
-  const handleLogin = (email: string, password: string): { success: boolean, message: string } => {
-    const user = users.find(u => u.email === email && u.password === password);
-    if (!user) {
-        return { success: false, message: 'Invalid email or password.' };
+  const handleLogin = async (email: string, password: string): Promise<{ success: boolean, message: string }> => {
+    try {
+        const { user } = await api.login(email, password);
+        setCurrentUser(user);
+        setIsAdmin(!!user.role);
+        setAppView('home');
+        return { success: true, message: 'Login successful' };
+    } catch (e) {
+        return { success: false, message: e instanceof Error ? e.message : 'An unknown error occurred.' };
     }
-    if (user.banned) {
-        return { success: false, message: 'Your account has been suspended by an administrator.' };
-    }
-    setCurrentUser(user);
-    setIsAdmin(!!user.role);
-    setAppView('home');
-    return { success: true, message: 'Login successful' };
   };
 
-  const handleAdminLogin = (email: string, password: string): boolean => {
-      const user = users.find(u => u.email === email && u.password === password);
-      if (user && user.role) { 
-          setCurrentUser(user);
-          setIsAdmin(true);
-          setAppView('home');
-          return true;
+  const handleAdminLogin = async (email: string, password: string): Promise<boolean> => {
+      try {
+        const { user } = await api.adminLogin(email, password);
+        setCurrentUser(user);
+        setIsAdmin(true);
+        setAppView('home');
+        return true;
+      } catch {
+        return false;
       }
-      return false;
   }
 
-  const handleRegister = (name: string, email: string, password: string): { success: boolean, message: string } => {
-    if (users.some(u => u.email === email)) {
-      return { success: false, message: 'An account with this email already exists.' };
+  const handleRegister = async (name: string, email: string, password: string): Promise<{ success: boolean, message: string }> => {
+    try {
+      const { newUser, updatedUsers } = await api.register(name, email, password);
+      setUsers(updatedUsers);
+      setCurrentUser(newUser);
+      setIsAdmin(false);
+      setAppView('home');
+      return { success: true, message: 'Registration successful!' };
+    } catch (e) {
+      return { success: false, message: e instanceof Error ? e.message : 'An unknown error occurred.' };
     }
-    const newUser: StoredUser = { 
-        name, email, password, 
-        walletBalance: 500, 
-        banned: false,
-        registrationDate: Date.now(),
-        totalPoints: 0,
-        contestHistory: [],
-        transactions: [{
-            id: `txn_init_${Date.now()}`,
-            type: 'deposit',
-            amount: 500,
-            description: 'Initial sign-up bonus',
-            timestamp: Date.now(),
-            status: 'completed',
-        }] 
-    };
-    setUsers(prevUsers => {
-      const updatedUsers = [...prevUsers, newUser];
-      localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-      return updatedUsers;
-    });
-    setCurrentUser(newUser);
-    setIsAdmin(false);
-    setAppView('home');
-    return { success: true, message: 'Registration successful!' };
   };
 
   const handleLogout = useCallback(() => {
@@ -457,126 +186,55 @@ const App: React.FC = () => {
     setAppView('home');
   }, []);
 
-  const handleAdminSaveSettings = useCallback((newSettings: GameSettings) => {
-    setGameSettings(newSettings);
-    localStorage.setItem('mindbattle_settings', JSON.stringify(newSettings));
-    if(currentUser) {
-        logAdminAction(currentUser, 'SETTINGS_UPDATE', 'Global game and payment settings were updated.');
-    }
-  }, [currentUser, logAdminAction]);
+  const handleAdminSaveSettings = useCallback(async (newSettings: GameSettings) => {
+    if(!currentUser) return;
+    const { updatedSettings, newLog } = await api.saveSettings(newSettings, currentUser);
+    setGameSettings(updatedSettings);
+    setAuditLog(prev => [newLog, ...prev]);
+  }, [currentUser]);
 
-  const handleCreateContest = useCallback((newContestData: Omit<Contest, 'id' | 'participants'>) => {
-      const newContest: Contest = {
-          ...newContestData,
-          id: `c_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          participants: [],
-      };
-      setContests(prevContests => {
-        const updatedContests = [...prevContests, newContest];
-        localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
-        return updatedContests;
-      });
-      if (currentUser) {
-        const action: AuditLogAction = newContest.status === 'Pending Approval' ? 'CONTEST_CREATED' : 'CONTEST_CREATED';
-        logAdminAction(currentUser, action, `Contest: '${newContest.title}' (${newContest.id})`);
-      }
-  }, [currentUser, logAdminAction]);
+  const handleCreateContest = useCallback(async (newContestData: Omit<Contest, 'id' | 'participants'>) => {
+      if(!currentUser) return;
+      const { updatedContests, newLog } = await api.createContest(newContestData, currentUser);
+      setContests(updatedContests);
+      if(newLog) setAuditLog(prev => [newLog, ...prev]);
+  }, [currentUser]);
 
-  const handleUpdateContest = useCallback((updatedContest: Contest) => {
-      const oldContest = contests.find(c => c.id === updatedContest.id);
-      setContests(prevContests => {
-        const updatedContests = prevContests.map(c => c.id === updatedContest.id ? updatedContest : c);
-        localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
-        return updatedContests;
-      });
-      if (currentUser && oldContest) {
-        let action: AuditLogAction | null = 'CONTEST_UPDATED';
-        let details = `Contest: '${updatedContest.title}' (${updatedContest.id})`;
-        if (oldContest.status === 'Pending Approval' && updatedContest.status === 'Upcoming') {
-            action = 'CONTEST_APPROVED';
-        } else if (oldContest.status === 'Pending Approval' && updatedContest.status === 'Rejected') {
-            action = 'CONTEST_REJECTED';
-        }
-        if(action) logAdminAction(currentUser, action, details);
-      }
-  }, [contests, currentUser, logAdminAction]);
+  const handleUpdateContest = useCallback(async (updatedContest: Contest) => {
+      if(!currentUser) return;
+      const { updatedContests, newLog } = await api.updateContest(updatedContest, currentUser);
+      setContests(updatedContests);
+      if(newLog) setAuditLog(prev => [newLog, ...prev]);
+  }, [currentUser]);
 
-  const handleDeleteContest = useCallback((contestId: string) => {
-      const contestToDelete = contests.find(c => c.id === contestId);
-      setContests(prevContests => {
-        const updatedContests = prevContests.filter(c => c.id !== contestId);
-        localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
-        return updatedContests;
-      });
-      if (currentUser && contestToDelete) {
-        logAdminAction(currentUser, 'CONTEST_DELETED', `Contest: '${contestToDelete.title}' (${contestToDelete.id})`);
-      }
-  }, [contests, currentUser, logAdminAction]);
+  const handleDeleteContest = useCallback(async (contestId: string) => {
+      if(!currentUser) return;
+      const { updatedContests, newLog } = await api.deleteContest(contestId, currentUser);
+      setContests(updatedContests);
+      setAuditLog(prev => [newLog, ...prev]);
+  }, [currentUser]);
 
-  const handleAdminUpdateUser = useCallback((userId: string, updates: Partial<Pick<StoredUser, 'banned'>>) => {
-      const userToUpdate = users.find(u => u.email === userId);
-      setUsers(prevUsers => {
-        const updatedUsers = prevUsers.map(u => u.email === userId ? { ...u, ...updates } : u);
-        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-        return updatedUsers;
-      });
-      if (currentUser && userToUpdate) {
-          const action: AuditLogAction = updates.banned ? 'USER_BANNED' : 'USER_UNBANNED';
-          logAdminAction(currentUser, action, `User: ${userToUpdate.name} (${userToUpdate.email})`);
-      }
-  }, [users, currentUser, logAdminAction]);
+  const handleAdminUpdateUser = useCallback(async (userId: string, updates: Partial<Pick<StoredUser, 'banned'>>) => {
+      if(!currentUser) return;
+      const { updatedUsers, newLog } = await api.updateUser(userId, updates, currentUser);
+      setUsers(updatedUsers);
+      setAuditLog(prev => [newLog, ...prev]);
+  }, [currentUser]);
   
-  const handleUpdateUserRole = useCallback((userId: string, role: AdminRole | 'None') => {
-      const userToUpdate = users.find(u => u.email === userId);
-      setUsers(prevUsers => {
-        const updatedUsers = prevUsers.map(u => {
-            if (u.email === userId) {
-                const updatedUser = { ...u };
-                if (role === 'None') {
-                    delete updatedUser.role;
-                } else {
-                    updatedUser.role = role;
-                }
-                return updatedUser;
-            }
-            return u;
-        });
-        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-        return updatedUsers;
-      });
-       if (currentUser && userToUpdate) {
-          logAdminAction(currentUser, 'ROLE_UPDATED', `Set role for ${userToUpdate.name} to ${role}`);
-      }
-  }, [users, currentUser, logAdminAction]);
+  const handleUpdateUserRole = useCallback(async (userId: string, role: AdminRole | 'None') => {
+      if(!currentUser) return;
+      const { updatedUsers, newLog } = await api.updateUserRole(userId, role, currentUser);
+      setUsers(updatedUsers);
+      setAuditLog(prev => [newLog, ...prev]);
+  }, [currentUser]);
   
-  const handleCancelContest = useCallback((contestId: string) => {
-      const contestToCancel = contests.find(c => c.id === contestId);
-      if (!contestToCancel) return;
-
-      contestToCancel.participants.forEach(participantEmail => {
-          if (contestToCancel.entryFee > 0) {
-              dispatchWalletAction({
-                  type: 'CONTEST_REFUND',
-                  payload: {
-                      userId: participantEmail,
-                      amount: contestToCancel.entryFee,
-                      description: `Refund for cancelled contest: ${contestToCancel.title}`,
-                  }
-              });
-          }
-      });
-      
-      setContests(prevContests => {
-        const updatedContests: Contest[] = prevContests.map(c => 
-            c.id === contestId ? { ...c, status: 'Cancelled', participants: [] } : c
-        );
-        localStorage.setItem('mindbattle_contests', JSON.stringify(updatedContests));
-        return updatedContests;
-      });
-      if (currentUser && contestToCancel) {
-        logAdminAction(currentUser, 'CONTEST_CANCELLED', `Contest: '${contestToCancel.title}' (${contestToCancel.id})`);
-      }
-  }, [contests, dispatchWalletAction, currentUser, logAdminAction]);
+  const handleCancelContest = useCallback(async (contestId: string) => {
+      if(!currentUser) return;
+      const { updatedContests, updatedUsers, newLog } = await api.cancelContest(contestId, currentUser);
+      setContests(updatedContests);
+      setUsers(updatedUsers);
+      setAuditLog(prev => [newLog, ...prev]);
+  }, [currentUser]);
   
   const handleGoToWallet = useCallback(() => {
     setAppView('wallet');
@@ -589,65 +247,48 @@ const App: React.FC = () => {
     }
   }, [currentUser]);
   
-  const handlePaymentSuccess = useCallback(() => {
+  const handlePaymentSuccess = useCallback(async () => {
     if (currentUser && depositInProgress) {
-      dispatchWalletAction({
-          type: 'DEPOSIT',
-          payload: {
-              userId: currentUser.email,
-              amount: depositInProgress.amount,
-              description: 'User deposit via gateway',
-          }
-      });
+      const { updatedUsers } = await api.depositFunds(currentUser.email, depositInProgress.amount);
+      setUsers(updatedUsers);
       setDepositInProgress(null);
       setAppView('wallet');
     }
-  }, [currentUser, depositInProgress, dispatchWalletAction]);
+  }, [currentUser, depositInProgress]);
 
   const handlePaymentCancel = useCallback(() => {
     setDepositInProgress(null);
     setAppView('wallet');
   }, []);
 
-  const handleWithdraw = useCallback((amount: number) => {
+  const handleWithdraw = useCallback(async (amount: number) => {
     if(currentUser) {
-        dispatchWalletAction({
-            type: 'WITHDRAWAL_REQUEST',
-            payload: {
-                userId: currentUser.email,
-                amount: amount,
-                description: 'Withdrawal request',
-            }
-        });
+        const { updatedUsers } = await api.requestWithdrawal(currentUser.email, amount);
+        setUsers(updatedUsers);
     }
-  }, [currentUser, dispatchWalletAction]);
+  }, [currentUser]);
 
-  const handleAdminCreateAdmin = useCallback((name: string, email: string, password: string, role: AdminRole): { success: boolean, message: string } => {
-      if (users.some(u => u.email === email)) {
-        return { success: false, message: 'An account with this email already exists.' };
+  const handleAdminCreateAdmin = useCallback(async (name: string, email: string, password: string, role: AdminRole): Promise<{ success: boolean, message: string }> => {
+      if(!currentUser) return { success: false, message: "Not authorized" };
+      try {
+        const { updatedUsers, newLog } = await api.createAdmin(name, email, password, role, currentUser);
+        setUsers(updatedUsers);
+        setAuditLog(prev => [newLog, ...prev]);
+        return { success: true, message: 'Admin created successfully!' };
+      } catch (e) {
+        return { success: false, message: e instanceof Error ? e.message : 'Failed to create admin.' };
       }
-      const newAdmin: StoredUser = {
-          name, email, password, role,
-          walletBalance: 0,
-          banned: false,
-          registrationDate: Date.now(),
-          transactions: [],
-          totalPoints: 0,
-          contestHistory: [],
-      };
-      setUsers(prevUsers => {
-        const updatedUsers = [...prevUsers, newAdmin];
-        localStorage.setItem('mindbattle_users', JSON.stringify(updatedUsers));
-        return updatedUsers;
-      });
-       if(currentUser) {
-          logAdminAction(currentUser, 'ADMIN_CREATED', `Created new admin: ${name} (${email}) with role ${role}.`);
-      }
-      return { success: true, message: 'Admin created successfully!' };
-  }, [users, currentUser, logAdminAction]);
-
+  }, [currentUser]);
 
   const renderContent = () => {
+    if (loading || !gameSettings) {
+      return (
+        <div className="flex items-center justify-center h-full text-white text-xl">
+          Loading MindBattle...
+        </div>
+      );
+    }
+    
     switch (appView) {
       case 'home':
         return <HomeScreen 

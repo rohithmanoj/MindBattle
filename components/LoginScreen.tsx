@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 interface LoginScreenProps {
-  onLogin: (email: string, password: string) => { success: boolean, message: string };
+  onLogin: (email: string, password: string) => Promise<{ success: boolean, message: string }>;
   onCancel: () => void;
   onNavigateToRegister: () => void;
   onNavigateToAdminLogin: () => void;
@@ -11,17 +11,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onCancel, onNavigate
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (email.trim() === '' || password.trim() === '') {
       setError('Email and password cannot be empty.');
       return;
     }
-    const result = onLogin(email, password);
+    setLoading(true);
+    const result = await onLogin(email, password);
     if (!result.success) {
       setError(result.message);
     }
+    setLoading(false);
   };
 
   return (
@@ -66,9 +69,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onCancel, onNavigate
           <div className="flex flex-col gap-4 mt-8">
              <button
               type="submit"
-              className="w-full bg-amber-500 text-slate-900 font-bold text-lg py-3 px-6 rounded-lg hover:bg-amber-400 transition-colors duration-300"
+              disabled={loading}
+              className="w-full bg-amber-500 text-slate-900 font-bold text-lg py-3 px-6 rounded-lg hover:bg-amber-400 transition-colors duration-300 disabled:bg-amber-700 disabled:cursor-wait"
             >
-              Login
+              {loading ? 'Logging in...' : 'Login'}
             </button>
             <button
               type="button"

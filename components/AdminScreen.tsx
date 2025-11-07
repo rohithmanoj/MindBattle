@@ -2,10 +2,10 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { GameSettings, StoredUser, Transaction, Contest, QuizQuestion, AdminRole, AdminPermission, User, Toast, AuditLog, AuditLogAction, Difficulty } from '../types';
-import { generateContestWithAI } from '../services/geminiService';
 import { SearchIcon, DollarSignIcon, UsersIcon, TrendingUpIcon, DashboardIcon, ContestsIcon, AdminUsersIcon, AdminManagementIcon, GlobalSettingsIcon, AuditLogIcon, CheckCircleIcon, XCircleIcon, InfoIcon } from './icons';
 import { DIFFICULTY_LEVELS } from '../constants';
 import AnalyticsDashboard from './AnalyticsDashboard';
+import * as api from '../services/apiService';
 
 
 // --- Helper Components ---
@@ -325,17 +325,17 @@ interface AdminScreenProps {
   contests: Contest[];
   currentUser: User;
   auditLog: AuditLog[];
-  onSaveSettings: (newSettings: GameSettings) => void;
+  onSaveSettings: (newSettings: GameSettings) => Promise<void>;
   onCancel: () => void;
-  onUpdateWithdrawal: (userId: string, transactionId: string, action: 'approve' | 'decline', adminId: string) => void;
-  onCreateContest: (newContest: Omit<Contest, 'id' | 'participants'>) => void;
-  onUpdateContest: (updatedContest: Contest) => void;
-  onDeleteContest: (contestId: string) => void;
-  onAdminUpdateUser: (userId: string, updates: Partial<Pick<StoredUser, 'banned'>>) => void;
-  onUpdateUserRole: (userId: string, role: AdminRole | 'None') => void;
-  onCancelContest: (contestId: string) => void;
+  onUpdateWithdrawal: (userId: string, transactionId: string, action: 'approve' | 'decline', adminId: string) => Promise<void>;
+  onCreateContest: (newContest: Omit<Contest, 'id' | 'participants'>) => Promise<void>;
+  onUpdateContest: (updatedContest: Contest) => Promise<void>;
+  onDeleteContest: (contestId: string) => Promise<void>;
+  onAdminUpdateUser: (userId: string, updates: Partial<Pick<StoredUser, 'banned'>>) => Promise<void>;
+  onUpdateUserRole: (userId: string, role: AdminRole | 'None') => Promise<void>;
+  onCancelContest: (contestId: string) => Promise<void>;
   onAdjustWallet: (userId: string, amount: number, reasonKeywords: string, adminId: string) => Promise<void>;
-  onAdminCreateAdmin: (name: string, email: string, password: string, role: AdminRole) => { success: boolean, message: string };
+  onAdminCreateAdmin: (name: string, email: string, password: string, role: AdminRole) => Promise<{ success: boolean, message: string }>;
 }
 
 type AdminView = 'main' | 'edit_contest' | 'verify_questions';
@@ -482,7 +482,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
   };
 
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
     try {
       const newSettings: GameSettings = {
         timePerQuestion: Number(time),
@@ -493,7 +493,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
       if (newSettings.categories.length === 0) throw new Error("You must provide at least one category.");
       if (newSettings.prizeAmounts.length !== 15) throw new Error(`The prize ladder must have exactly 15 levels. You have provided ${newSettings.prizeAmounts.length}.`);
       if (Object.values(newSettings.paymentGatewaySettings).some(v => !v)) throw new Error("All payment gateway fields are required.");
-      onSaveSettings(newSettings);
+      await onSaveSettings(newSettings);
       addToast('Settings saved successfully!', 'success');
     } catch (e) {
       addToast(e instanceof Error ? e.message : 'Invalid format in one of the fields.', 'error');
@@ -531,7 +531,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
       }
       setIsGenerating(true);
       try {
-          const contestData = await generateContestWithAI(aiFormParams.topic, aiFormParams.ageGroup, aiFormParams.difficulty, aiFormParams.numberOfQuestions);
+          const contestData = await api.proxyGenerateContestWithAI(aiFormParams.topic, aiFormParams.ageGroup, aiFormParams.difficulty, aiFormParams.numberOfQuestions);
           setCurrentContest(prev => ({ ...prev, ...contestData }));
           setGeneratedQuestions(contestData.questions || []);
           setView('verify_questions');
@@ -542,7 +542,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
       }
   };
 
-  const handleSaveContest = () => {
+  const handleSaveContest = async () => {
     if (!currentContest) return;
     try {
         let questionsToSave: QuizQuestion[] = currentContest.questions || [];
@@ -576,9 +576,9 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
         if (contestData.contestStartDate <= contestData.registrationEndDate) throw new Error("Contest start date must be after registration end date.");
         
         if (currentContest.id) {
-            onUpdateContest({ ...contestData, id: currentContest.id, participants: currentContest.participants || [] });
+            await onUpdateContest({ ...contestData, id: currentContest.id, participants: currentContest.participants || [] });
         } else {
-            onCreateContest(contestData);
+            await onCreateContest(contestData);
         }
         addToast('Contest saved successfully!', 'success');
         setView('main');
@@ -588,7 +588,7 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
     }
   };
   
-  const handlePublishVerifiedContest = () => {
+  const handlePublishVerifiedContest = async () => {
       if (!currentContest) return;
        const finalContestData: Omit<Contest, 'id' | 'participants'> = {
             ...(currentContest as Omit<Contest, 'id' | 'participants'>),
@@ -598,9 +598,9 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
             difficulty: currentContest.difficulty || 'Medium',
        };
        if (currentContest.id) {
-          onUpdateContest({ ...finalContestData, id: currentContest.id, participants: currentContest.participants || [] });
+          await onUpdateContest({ ...finalContestData, id: currentContest.id, participants: currentContest.participants || [] });
        } else {
-          onCreateContest(finalContestData);
+          await onCreateContest(finalContestData);
        }
        addToast('Contest has been published!', 'success');
        setView('main');
@@ -631,13 +631,13 @@ const AdminScreen: React.FC<AdminScreenProps> = (props) => {
     }
   };
 
-  const handleCreateAdminSubmit = () => {
+  const handleCreateAdminSubmit = async () => {
       const { name, email, password, role } = newAdminForm;
       if (!name.trim() || !email.trim() || !password.trim()) {
           addToast("All fields are required to create an admin.", 'error');
           return;
       }
-      const result = onAdminCreateAdmin(name, email, password, role);
+      const result = await onAdminCreateAdmin(name, email, password, role);
       if (result.success) {
           addToast(result.message, 'success');
           setIsCreatingAdmin(false);
