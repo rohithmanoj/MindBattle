@@ -34,6 +34,7 @@ const App: React.FC = () => {
   const [auditLog, setAuditLog] = useState<AuditLog[]>([]);
   const [gameSettings, setGameSettings] = useState<GameSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [debugInfo, setDebugInfo] = useState<string[] | null>(null);
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -45,7 +46,13 @@ const App: React.FC = () => {
         setAuditLog(auditLog);
       } catch (e) {
         console.error("Failed to initialize app data", e);
-        setError("Could not load application data. Please refresh the page.");
+        const errorMessage = e instanceof Error ? e.message : "Could not load application data. Please refresh the page.";
+        setError(errorMessage);
+        
+        // Fetch diagnostic info on failure
+        const diagnostics = await api.fetchDiagnostics();
+        setDebugInfo(diagnostics);
+
       } finally {
         setLoading(false);
       }
@@ -288,10 +295,55 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   const renderContent = () => {
-    if (loading || !gameSettings) {
+    if (loading) {
       return (
         <div className="flex items-center justify-center h-full text-white text-xl">
           Loading MindBattle...
+        </div>
+      );
+    }
+    
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-white bg-slate-800/50 p-8 rounded-lg">
+            <h2 className="text-3xl font-bold text-red-400 mb-4">Application Error</h2>
+            <p className="text-slate-300 mb-6 text-center max-w-xl">We encountered a problem loading critical application data. This is often due to a temporary issue connecting to the backend service.</p>
+            <div className="w-full max-w-2xl bg-slate-900/70 p-6 rounded-lg border border-slate-700">
+                <h3 className="font-bold text-amber-400 mb-2">Error Message:</h3>
+                <pre className="bg-slate-800 p-3 rounded-md text-red-300 font-roboto-mono text-sm whitespace-pre-wrap mb-4">{error}</pre>
+                
+                <h3 className="font-bold text-amber-400 mb-2">Backend Diagnostic Log:</h3>
+                <div className="bg-slate-800 p-3 rounded-md font-roboto-mono text-sm text-slate-400 max-h-48 overflow-y-auto">
+                    {debugInfo ? (
+                        debugInfo.length > 0 ? (
+                            <ul>
+                                {debugInfo.map((log, index) => <li key={index}>{log}</li>)}
+                            </ul>
+                        ) : (
+                            <p className="text-yellow-400">The backend's request log is empty.</p>
+                        )
+                    ) : (
+                        <p className="animate-pulse">Fetching debug info...</p>
+                    )}
+                </div>
+                 <div className="text-xs text-slate-500 mt-3">
+                    <p className="font-bold">How to read this log:</p>
+                    <p>&bull; This log shows the last few requests the backend server received.</p>
+                    <p>&bull; If this log is <span className="text-yellow-500">empty</span>, it means your browser's request didn't reach our server. This could be a network or proxy configuration issue.</p>
+                    <p>&bull; You should see a request like <span className="text-green-500">GET /api/contests</span>. If you see other paths but not this one, the proxy path might be incorrect.</p>
+                </div>
+            </div>
+            <button onClick={() => window.location.reload()} className="mt-8 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-500 transition-colors">
+                Retry Connection
+            </button>
+        </div>
+      );
+    }
+
+    if (!gameSettings) {
+      return (
+        <div className="flex items-center justify-center h-full text-white text-xl">
+          Initializing settings...
         </div>
       );
     }

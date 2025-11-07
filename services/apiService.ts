@@ -125,7 +125,7 @@ export const initializeData = async (): Promise<{ users: StoredUser[], contests:
     writeToDb(DB_KEYS.CONTESTS, loadedContests);
     console.log("Successfully fetched contests from backend.");
   } catch (error) {
-    console.error("Failed to fetch contests from backend. Please check the Render service logs for diagnostic information.", error);
+    console.error("Failed to fetch contests from backend after multiple retries. Falling back to local cache if available.", error);
     const cachedContests = readFromDb<Contest[]>(DB_KEYS.CONTESTS);
     if (cachedContests) {
       console.log("Loaded contests from local cache.");
@@ -133,11 +133,35 @@ export const initializeData = async (): Promise<{ users: StoredUser[], contests:
     } else {
       console.error("No local cache available for contests. The application may not function correctly.");
     }
+    // Re-throw the original error to be caught by the UI
+    if (error instanceof Error) {
+        // Append a more user-friendly message for display
+        const fetchError = new Error(`Failed to fetch contests. ${error.message}`);
+        throw fetchError;
+    }
+    throw error;
   }
   
   const auditLog = readFromDb<AuditLog[]>(DB_KEYS.AUDIT_LOG) || [];
 
   return { users: migratedUsers, contests: loadedContests, settings, auditLog };
+};
+
+export const fetchDiagnostics = async (): Promise<string[]> => {
+    await simulateDelay(100);
+    try {
+        const response = await fetch(`${API_URL}/api/diagnostics`);
+        if (!response.ok) {
+            return [`Failed to fetch diagnostics: HTTP ${response.status}`];
+        }
+        const data = await response.json();
+        return data.logs || ["No logs property found in diagnostic response."];
+    } catch (e) {
+        if (e instanceof Error) {
+            return [`Network error fetching diagnostics: ${e.message}`];
+        }
+        return ["An unknown error occurred while fetching diagnostics."];
+    }
 };
 
 

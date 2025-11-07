@@ -6,6 +6,8 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+const requestLog = [];
+
 // --- Helper Functions to convert DB snake_case to frontend camelCase ---
 const toCamel = (s) => {
   return s.replace(/([-_][a-z])/ig, ($1) => {
@@ -41,9 +43,13 @@ app.use(cors());
 app.use(express.json());
 
 // --- DIAGNOSTIC LOGGING ---
-// Add middleware to log every incoming request to help debug proxy issues.
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] Received request: ${req.method} ${req.originalUrl}`);
+  const logEntry = `[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`;
+  console.log(`Received request: ${logEntry}`);
+  requestLog.unshift(logEntry); // Add to the beginning
+  if (requestLog.length > 20) { // Keep the last 20 requests
+    requestLog.pop();
+  }
   next();
 });
 
@@ -53,7 +59,14 @@ app.get('/', (req, res) => {
 });
 
 // Routes
-app.get('/api/contests', async (req, res) => {
+app.get('/diagnostics', (req, res) => {
+  res.status(200).json({
+    message: "Last 20 requests received by the backend.",
+    logs: requestLog
+  });
+});
+
+app.get('/contests', async (req, res) => {
   try {
     const query = `
       SELECT
