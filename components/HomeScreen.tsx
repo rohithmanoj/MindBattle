@@ -48,25 +48,14 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ contests, currentUser, isAdmin,
   }, [error, clearError]);
 
   const { activeContests, finishedContests, myContests, featuredContest } = useMemo(() => {
-    const now = Date.now();
-    
-    const isContestFinished = (c: Contest) => {
-        if (c.status === 'Finished') return true;
-        
-        // For FastestFinger, the end is precise.
-        if (c.format === 'FastestFinger' && c.timerType === 'total_contest' && c.totalContestTime) {
-            const endTime = c.contestStartDate + (c.totalContestTime * 1000);
-            return now > endTime;
-        }
-        
-        // For KBC or others, use a generous buffer to account for gameplay.
-        const endTime = c.contestStartDate + (2 * 60 * 60 * 1000);
-        return now > endTime;
-    };
-
     const approvedContests = contests.filter(c => c.status !== 'Draft' && c.status !== 'Pending Approval' && c.status !== 'Rejected');
-    const active = approvedContests.filter(c => !isContestFinished(c));
-    const finished = approvedContests.filter(c => isContestFinished(c));
+    
+    // An active contest is either 'Upcoming' or 'Live'.
+    const active = approvedContests.filter(c => c.status === 'Upcoming' || c.status === 'Live');
+    
+    // A finished contest has the explicit 'Finished' or 'Cancelled' status.
+    const finished = approvedContests.filter(c => c.status === 'Finished' || c.status === 'Cancelled');
+    
     const my = contests.filter(c => c.createdBy === currentUser?.email);
       
     const featured = active.length > 0

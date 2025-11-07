@@ -55,14 +55,21 @@ const App: React.FC = () => {
 
   // Auto-update contest statuses based on time
   useEffect(() => {
-    const statusUpdateInterval = setInterval(async () => {
+    const interval = setInterval(async () => {
+      try {
+        // This function reads from localStorage, updates statuses, and writes back.
+        // initializeData populates localStorage from the backend on load.
         const { changed, updatedContests } = await api.updateContestStatuses();
         if (changed) {
-            setContests(updatedContests);
+          // If statuses changed, update the app state to re-render.
+          setContests(updatedContests);
         }
-    }, 5000); // Check every 5 seconds for better responsiveness in a demo environment
+      } catch (e) {
+        console.error("Failed to update contest statuses", e);
+      }
+    }, 60 * 1000); // Check every minute
 
-    return () => clearInterval(statusUpdateInterval);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -331,7 +338,7 @@ const App: React.FC = () => {
             questions={activeContest.questions} 
             onEndGame={handleEndGame} 
             prizeAmounts={gameSettings.prizeAmounts} 
-            timePerQuestion={activeContest.timePerQuestion} 
+            timePerQuestion={activeContest.timePerQuestion || gameSettings.timePerQuestion} 
         />;
       case 'admin':
         return isAdmin ? <AdminScreen 

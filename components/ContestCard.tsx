@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Contest, User, Difficulty } from '../types';
 
 interface ContestCardProps {
@@ -24,44 +24,29 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
   const isRegistered = currentUser ? participants.includes(currentUser.email) : false;
   const isRegistrationOpen = now >= registrationStartDate && now <= registrationEndDate;
   const isFull = participants.length >= maxParticipants;
-  
-  const isFinished = useMemo(() => {
-    if (status === 'Finished') return true;
-
-    if (contest.format === 'FastestFinger' && contest.timerType === 'total_contest' && contest.totalContestTime) {
-        const endTime = contest.contestStartDate + (contest.totalContestTime * 1000);
-        return now > endTime;
-    }
-
-    // Use a buffer for KBC since game length can vary
-    const endTime = contestStartDate + (2 * 60 * 60 * 1000);
-    return now > endTime;
-  }, [status, contestStartDate, contest.format, contest.timerType, contest.totalContestTime, now]);
-
-  const isLive = now >= contestStartDate && !isFinished;
-  const isWaiting = now < contestStartDate;
+  const isFinished = status === 'Finished' || status === 'Cancelled';
 
   const getButtonProps = () => {
     if (isMyContestView) {
         return { text: '', disabled: true, action: () => {} };
     }
 
+    // Rely on status as the source of truth
     if (status === 'Cancelled') return { text: 'Contest Cancelled', disabled: true, action: () => {} };
-    if (isFinished) {
+    if (status === 'Finished') {
         return { text: 'View Results', disabled: false, action: () => onViewLeaderboard(contest) };
     }
-    if (isLive) {
+    if (status === 'Live') {
       if(isRegistered) {
          return { text: 'Enter Contest', disabled: false, action: () => onEnterContest(contest) };
       }
       return { text: 'Contest is Live', disabled: true, action: () => {} };
     }
 
+    // If status is Upcoming
     if (isRegistered) {
-        if (isWaiting) {
-            return { text: 'Enter Contest', disabled: false, action: () => onEnterContest(contest) };
-        }
-        return { text: 'Registered', disabled: true, action: () => {} };
+        // Can enter a contest before it is live, which takes them to the waiting room.
+        return { text: 'Enter Contest', disabled: false, action: () => onEnterContest(contest) };
     }
 
     if (!isRegistrationOpen) return { text: 'Registration Closed', disabled: true, action: () => {} };
@@ -98,7 +83,9 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
   
   const cardStateClasses = () => {
     if (isMyContestView) return 'border-indigo-500/50 hover:border-indigo-400';
-    if (isFinished || status === 'Cancelled' || status === 'Rejected') return 'opacity-60 border-slate-700';
+    // Fix: This condition was redundant and likely caused a linting error due to declaration order.
+    // 'isFinished' already includes 'Cancelled'. The condition is now cleaner and correct.
+    if (isFinished || status === 'Rejected') return 'opacity-60 border-slate-700';
     return 'border-slate-700 hover:border-amber-400/50';
   };
   
@@ -111,7 +98,6 @@ const ContestCard: React.FC<ContestCardProps> = ({ contest, onRegister, onEnterC
         default: return <div className={`${baseClasses} bg-slate-700 text-slate-400`}>Status: {status}</div>
     }
   }
-
 
   return (
     <div className={`bg-slate-800/50 border rounded-lg p-6 flex flex-col transition-all duration-300 shadow-lg ${cardStateClasses()}`}>

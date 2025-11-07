@@ -24,7 +24,12 @@ This folder contains the Node.js and PostgreSQL backend server for the MindBattl
 
 4.  **Initialize Database Schema & Data:**
     - Use a PostgreSQL client (like `psql` or a GUI tool) to connect to your new database.
-    - Run the contents of the `database.sql` file. This will create the necessary tables and seed them with initial contest data.
+    - Run the SQL commands in the `database.sql` file. This will create the necessary tables and seed them with initial contest data.
+    - For example, using the `psql` command-line tool:
+      ```bash
+      psql -d mindbattle_db -U YOUR_USER -f database.sql
+      ```
+      (You might be prompted for your password.)
 
 ## Running the Server
 

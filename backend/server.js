@@ -43,10 +43,39 @@ app.use(express.json());
 // Routes
 app.get('/api/contests', async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT * FROM contests ORDER BY contest_start_date DESC');
-    // The frontend expects camelCase keys, but the DB returns snake_case.
-    // We convert them here to match the API contract defined in types.ts.
-    res.json(keysToCamel(rows));
+    const query = `
+      SELECT
+        id, title, description, category, (entry_fee_cents / 100.0) as entry_fee, (prize_pool_cents / 100.0) as prize_pool, status, 
+        registration_start_date, registration_end_date, contest_start_date, 
+        max_participants, rules, questions, participants, number_of_questions, 
+        created_by, results, difficulty,
+        'KBC' as format,
+        'per_question' as timer_type,
+        time_per_question,
+        null as total_contest_time
+      FROM contests_kbc
+      UNION ALL
+      SELECT
+        id, title, description, category, (entry_fee_cents / 100.0) as entry_fee, (prize_pool_cents / 100.0) as prize_pool, status, 
+        registration_start_date, registration_end_date, contest_start_date, 
+        max_participants, rules, questions, participants, number_of_questions, 
+        created_by, results, difficulty,
+        'FastestFinger' as format,
+        'total_contest' as timer_type,
+        0 as time_per_question,
+        total_contest_time
+      FROM contests_fastest_finger
+      ORDER BY contest_start_date DESC
+    `;
+    const { rows } = await db.query(query);
+    // Timestamps are returned as Date objects, frontend expects numbers (milliseconds)
+    const processedRows = rows.map(row => ({
+        ...row,
+        registration_start_date: new Date(row.registration_start_date).getTime(),
+        registration_end_date: new Date(row.registration_end_date).getTime(),
+        contest_start_date: new Date(row.contest_start_date).getTime(),
+    }));
+    res.json(keysToCamel(processedRows));
   } catch (err) {
     console.error('Error fetching contests:', err);
     res.status(500).json({ error: 'Internal server error' });

@@ -4,6 +4,7 @@ services:
     name: mindbattle-backend
     env: node
     plan: free # or your preferred plan
+    rootDir: backend
     buildCommand: 'npm install'
     startCommand: 'npm start'
     envVars:

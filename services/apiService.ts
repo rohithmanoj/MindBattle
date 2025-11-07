@@ -17,140 +17,40 @@ const DB_KEYS = {
   AUDIT_LOG: 'mindbattle_audit_log'
 };
 
-const API_URL = ''; // Use relative path for API calls
-
-// Fallback data, moved from the deleted data.ts file
-const FALLBACK_MOCK_CONTESTS: Contest[] = [
-  {
-    id: 'c1',
-    title: 'General Knowledge Gala',
-    description: 'Test your all-around knowledge in this classic trivia showdown.',
-    category: 'General Knowledge',
-    entryFee: 0,
-    prizePool: 500,
-    status: 'Upcoming',
-    registrationStartDate: Date.now() - 24 * 60 * 60 * 1000, // Started yesterday
-    registrationEndDate: Date.now() + 6 * 24 * 60 * 60 * 1000, // Ends in 6 days
-    contestStartDate: Date.now() + 6 * 24 * 60 * 60 * 1000 + 3600000, // Starts 1 hour after registration ends
-    maxParticipants: 200,
-    rules: 'Standard quiz rules. No cheating allowed. The admin\'s decision is final.',
-    questions: [], // These would be populated by an admin
-    participants: ['test@user.com'],
-    format: 'KBC',
-    timerType: 'per_question',
-    timePerQuestion: 30,
-    numberOfQuestions: 15,
-    difficulty: 'Easy',
-  },
-  {
-    id: 'c2',
-    title: 'Science Sphere Challenge',
-    description: 'From biology to astrophysics, prove you are a science whiz.',
-    category: 'Science & Nature',
-    entryFee: 100,
-    prizePool: 10000,
-    status: 'Upcoming',
-    registrationStartDate: Date.now(),
-    registrationEndDate: Date.now() + 10 * 24 * 60 * 60 * 1000,
-    contestStartDate: Date.now() + 10 * 24 * 60 * 60 * 1000 + 3600000,
-    maxParticipants: 100,
-    rules: 'Science category only. All questions are peer-reviewed for accuracy.',
-    questions: [],
-    participants: [],
-    format: 'KBC',
-    timerType: 'per_question',
-    timePerQuestion: 45,
-    numberOfQuestions: 15,
-    difficulty: 'Medium',
-  },
-  {
-    id: 'c3',
-    title: 'History Buffs Battle',
-    description: 'Journey through time and test your historical expertise.',
-    category: 'History',
-    entryFee: 50,
-    prizePool: 5000,
-    status: 'Upcoming',
-    registrationStartDate: Date.now(),
-    registrationEndDate: Date.now() + 5 * 24 * 60 * 60 * 1000,
-    contestStartDate: Date.now() + 5 * 24 * 60 * 60 * 1000 + 3600000,
-    maxParticipants: 150,
-    rules: 'Focuses on world history from ancient civilizations to the 20th century.',
-    questions: [],
-    participants: [],
-    format: 'KBC',
-    timerType: 'per_question',
-    timePerQuestion: 35,
-    numberOfQuestions: 15,
-    difficulty: 'Hard',
-  },
-  {
-    id: 'c4',
-    title: 'Movie Marathon Quiz',
-    description: 'Are you a true cinephile? This one is for you!',
-    category: 'Movies & TV',
-    entryFee: 0,
-    prizePool: 250,
-    status: 'Finished',
-    registrationStartDate: Date.now() - 20 * 24 * 60 * 60 * 1000,
-    registrationEndDate: Date.now() - 15 * 24 * 60 * 60 * 1000,
-    contestStartDate: Date.now() - 15 * 24 * 60 * 60 * 1000 + 3600000,
-    maxParticipants: 500,
-    rules: 'Questions cover a wide range of genres and eras.',
-    questions: [],
-    participants: [],
-    format: 'KBC',
-    timerType: 'per_question',
-    timePerQuestion: 25,
-    numberOfQuestions: 15,
-    difficulty: 'Medium',
-  },
-    {
-    id: 'c5',
-    title: 'Sports Fan Standoff',
-    description: 'Go for the gold in this ultimate sports trivia competition.',
-    category: 'Sports',
-    entryFee: 25,
-    prizePool: 2500,
-    status: 'Upcoming',
-    registrationStartDate: Date.now(),
-    registrationEndDate: Date.now() + 3 * 24 * 60 * 60 * 1000,
-    contestStartDate: Date.now() + 3 * 24 * 60 * 60 * 1000 + 3600000,
-    maxParticipants: 75,
-    rules: 'All sports, all eras. Test your knowledge across the board.',
-    questions: [],
-    participants: [],
-    format: 'KBC',
-    timerType: 'per_question',
-    timePerQuestion: 30,
-    numberOfQuestions: 15,
-    difficulty: 'Medium',
-  },
-  {
-    id: 'c6',
-    title: 'Tech Titans Tussle',
-    description: 'Code, gadgets, and the digital world. Show off your tech genius.',
-    category: 'Technology',
-    entryFee: 200,
-    prizePool: 20000,
-    status: 'Draft', // Example of a draft contest
-    registrationStartDate: Date.now() + 2 * 24 * 60 * 60 * 1000,
-    registrationEndDate: Date.now() + 9 * 24 * 60 * 60 * 1000,
-    contestStartDate: Date.now() + 9 * 24 * 60 * 60 * 1000 + 3600000,
-    maxParticipants: 50,
-    rules: 'High-level technology questions. For experts only.',
-    questions: [],
-    participants: [],
-    format: 'KBC',
-    timerType: 'per_question',
-    timePerQuestion: 60,
-    numberOfQuestions: 15,
-    difficulty: 'Difficult',
-  },
-];
-
+const API_URL = ''; // Use a relative path to leverage the Vercel proxy
 
 const simulateDelay = (ms: number = 250) => new Promise(res => setTimeout(res, ms));
+
+const fetchWithRetry = async (url: string, retries = 3, initialDelay = 4000, backoff = 2): Promise<Response> => {
+    let delay = initialDelay;
+    for (let i = 0; i < retries; i++) {
+        try {
+            const response = await fetch(url);
+            if (response.ok) {
+                return response;
+            }
+            // Don't retry on 4xx client errors (e.g., Not Found), as they are unlikely to resolve.
+            if (response.status >= 400 && response.status < 500) {
+                return response; // Return the failed response to be handled by the caller.
+            }
+            // For 5xx server errors, throw to trigger a retry.
+            throw new Error(`Server error: ${response.status}`);
+        } catch (error) {
+            // This catches network errors (like "Failed to fetch") and the thrown server errors.
+            console.warn(`Fetch attempt ${i + 1} for ${url} failed. Retrying in ${delay / 1000}s...`, error);
+            if (i < retries - 1) { // Don't wait after the last failed attempt.
+                await simulateDelay(delay);
+                delay *= backoff;
+            } else {
+                // Last attempt failed, re-throw the error to be caught by the caller.
+                throw error;
+            }
+        }
+    }
+    // Should be unreachable, but keeps TypeScript happy.
+    throw new Error('All fetch attempts failed.');
+};
+
 
 const readFromDb = <T>(key: string): T => {
   try {
@@ -183,7 +83,6 @@ const logAdminAction = (admin: User, action: AuditLogAction, details: string): A
 // --- PUBLIC API ---
 
 export const initializeData = async (): Promise<{ users: StoredUser[], contests: Contest[], settings: GameSettings, auditLog: AuditLog[] }> => {
-  await simulateDelay();
   // User data migration
   let loadedUsers: StoredUser[] = readFromDb<StoredUser[]>(DB_KEYS.USERS) || [];
   let userMigrationNeeded = false;
@@ -213,23 +112,34 @@ export const initializeData = async (): Promise<{ users: StoredUser[], contests:
     writeToDb(DB_KEYS.SETTINGS, settings);
   }
 
-  // Contest data now fetches from backend
-  let loadedContests: Contest[];
+  // Fetch contests from the backend with a robust retry mechanism
+  let loadedContests: Contest[] = [];
   try {
-    const response = await fetch(`${API_URL}/api/contests`);
-    if (!response.ok) throw new Error('Backend not available');
+    console.log("Attempting to fetch contests from backend...");
+    const response = await fetchWithRetry(`${API_URL}/api/contests`);
+    if (!response.ok) {
+        // This will handle 4xx errors that fetchWithRetry doesn't retry
+        throw new Error(`Backend responded with status: ${response.status}`);
+    }
     loadedContests = await response.json();
+    writeToDb(DB_KEYS.CONTESTS, loadedContests);
     console.log("Successfully fetched contests from backend.");
-    writeToDb(DB_KEYS.CONTESTS, loadedContests); // Cache for offline/fallback
-  } catch (e) {
-    console.warn("Could not fetch contests from backend. Falling back to local storage/mock data.", e);
-    loadedContests = readFromDb<Contest[]>(DB_KEYS.CONTESTS) || FALLBACK_MOCK_CONTESTS;
+  } catch (error) {
+    console.error("Failed to fetch contests from backend after multiple retries. Falling back to local cache if available.", error);
+    const cachedContests = readFromDb<Contest[]>(DB_KEYS.CONTESTS);
+    if (cachedContests) {
+      console.log("Loaded contests from local cache.");
+      loadedContests = cachedContests;
+    } else {
+      console.error("No local cache available for contests. The application may not function correctly.");
+    }
   }
   
   const auditLog = readFromDb<AuditLog[]>(DB_KEYS.AUDIT_LOG) || [];
 
   return { users: migratedUsers, contests: loadedContests, settings, auditLog };
 };
+
 
 export const login = async (email: string, password: string): Promise<{ user: StoredUser }> => {
     await simulateDelay();
