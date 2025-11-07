@@ -40,6 +40,18 @@ const keysToCamel = function (o) {
 app.use(cors());
 app.use(express.json());
 
+// --- DIAGNOSTIC LOGGING ---
+// Add middleware to log every incoming request to help debug proxy issues.
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] Received request: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// Health check route for Render
+app.get('/', (req, res) => {
+  res.status(200).send('MindBattle Backend is running!');
+});
+
 // Routes
 app.get('/api/contests', async (req, res) => {
   try {

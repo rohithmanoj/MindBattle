@@ -125,7 +125,7 @@ export const initializeData = async (): Promise<{ users: StoredUser[], contests:
     writeToDb(DB_KEYS.CONTESTS, loadedContests);
     console.log("Successfully fetched contests from backend.");
   } catch (error) {
-    console.error("Failed to fetch contests from backend after multiple retries. Falling back to local cache if available.", error);
+    console.error("Failed to fetch contests from backend. Please check the Render service logs for diagnostic information.", error);
     const cachedContests = readFromDb<Contest[]>(DB_KEYS.CONTESTS);
     if (cachedContests) {
       console.log("Loaded contests from local cache.");
