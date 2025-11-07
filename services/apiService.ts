@@ -1,3 +1,5 @@
+
+
 import { StoredUser, Contest, GameSettings, AuditLog, AdminRole, User, QuizQuestion, GameResults, AuditLogAction, Transaction, ContestResult } from '../types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_CATEGORIES, DEFAULT_PAYMENT_GATEWAY_SETTINGS, DEFAULT_PRIZE_AMOUNTS, DEFAULT_TIME_PER_QUESTION } from '../constants';
 import * as gemini from './geminiService';
@@ -517,6 +519,10 @@ export const endGameAndUpdateStats = async (contestId: string, userId: string, r
 };
 
 
+// Fix for type error TS2322: Type '(Contest | { status: "Live"; ... })[]' is not assignable to type 'Contest[]'.
+// The original implementation mutated an object inside a .map() callback, which can lead to subtle typing issues.
+// This new implementation is immutable, safer, and fixes the type widening problem by creating a new object when the status changes.
+// It also corrects a logic bug where a contest could transition from 'Upcoming' to 'Finished' in a single pass.
 export const updateContestStatuses = async (): Promise<{ changed: boolean, updatedContests: Contest[] }> => {
     // This is a special case that doesn't simulate a user-initiated API call,
     // but a server-side cron job. No delay needed.
@@ -524,19 +530,13 @@ export const updateContestStatuses = async (): Promise<{ changed: boolean, updat
     const now = Date.now();
     let contestsHaveChanged = false;
 
-    // FIX: The logic is refactored to use a mutable copy within the map,
-    // which resolves the TypeScript type-widening issue while keeping the logic clear.
-    const updatedContests = contests.map(c => {
-        // FIX: Explicitly type the mutable copy to prevent type widening of 'status' property.
-        const contest: Contest = { ...c }; // create a mutable copy to prevent type issues
-        let statusChanged = false;
+    const updatedContests = contests.map(contest => {
+        const originalStatus = contest.status;
+        let newStatus: Contest['status'] = originalStatus;
 
-        if (contest.status === 'Upcoming' && now >= contest.contestStartDate) {
-            contest.status = 'Live';
-            statusChanged = true;
-        }
-
-        if (contest.status === 'Live') {
+        if (originalStatus === 'Upcoming' && now >= contest.contestStartDate) {
+            newStatus = 'Live';
+        } else if (originalStatus === 'Live') {
             let isFinished = false;
             if (contest.format === 'FastestFinger' && contest.timerType === 'total_contest' && contest.totalContestTime) {
                 if (now > contest.contestStartDate + (contest.totalContestTime * 1000)) {
@@ -549,13 +549,13 @@ export const updateContestStatuses = async (): Promise<{ changed: boolean, updat
                 }
             }
             if (isFinished) {
-                contest.status = 'Finished';
-                statusChanged = true;
+                newStatus = 'Finished';
             }
         }
 
-        if (statusChanged) {
+        if (newStatus !== originalStatus) {
             contestsHaveChanged = true;
+            return { ...contest, status: newStatus };
         }
 
         return contest;

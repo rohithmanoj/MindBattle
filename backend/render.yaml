@@ -17,4 +17,4 @@ services:
   - type: psql
     name: mindbattle-db
     plan: free # or your preferred plan
-    postgresMajorVersion: 14
+    postgresMajorVersion: '14'
