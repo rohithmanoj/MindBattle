@@ -4,5 +4,8 @@
       "source": "/api/:path*",
       "destination": "https://mindbattle-backend.onrender.com/:path*"
     }
-  ]
+  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite"
 }
